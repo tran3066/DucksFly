@@ -86,15 +86,6 @@ export async function loadDuck(variant: DuckVariant = 'male'): Promise<LoadedDuc
     loopByName[c.name as ClipName] = c.loop
   }
 
-  // TEMP DIAGNOSTIC: report the model's real size so we can pick the right scale.
-  const _box = new THREE.Box3().setFromObject(fbx)
-  const _size = _box.getSize(new THREE.Vector3())
-  const _center = _box.getCenter(new THREE.Vector3())
-  console.warn(
-    `[duck] raw bbox size = ${_size.x.toFixed(2)} x ${_size.y.toFixed(2)} x ${_size.z.toFixed(2)}, ` +
-      `center = (${_center.x.toFixed(2)}, ${_center.y.toFixed(2)}, ${_center.z.toFixed(2)})`,
-  )
-
   const mixer = new THREE.AnimationMixer(fbx)
   let current: THREE.AnimationAction | null = null
 

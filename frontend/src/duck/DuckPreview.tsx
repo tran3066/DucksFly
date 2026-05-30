@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Grid, OrbitControls } from '@react-three/drei'
 import { Duck } from './Duck'
+import { Tree } from './Tree'
 import type { ClipName, DuckVariant } from './loadDuck'
 
 // A few representative clips for eyeballing the animations.
@@ -15,9 +16,9 @@ const CLIPS: ClipName[] = [
   'swim_straight',
 ]
 
-// The Unity FBX may import at an unexpected scale (Unity authors in cm). If the
-// duck is invisible or fills the screen, flip between these to find the right one.
-const SCALES = [0.001, 0.005, 0.01, 0.1, 1] as const
+// The duck FBX imports HUGE (~50,000 units tall), so it needs a tiny scale.
+// These bracket ~1 to ~5 units tall; pick whichever looks right.
+const SCALES = [0.00002, 0.00003, 0.00004, 0.00006, 0.0001] as const
 
 /**
  * Standalone dev harness to confirm the duck renders + animates. Not part of
@@ -26,7 +27,7 @@ const SCALES = [0.001, 0.005, 0.01, 0.1, 1] as const
 export function DuckPreview() {
   const [variant, setVariant] = useState<DuckVariant>('male')
   const [clip, setClip] = useState<ClipName>('idle_1')
-  const [scale, setScale] = useState<number>(1)
+  const [scale, setScale] = useState<number>(0.00003)
 
   return (
     <div style={{ position: 'fixed', inset: 0 }}>
@@ -40,6 +41,9 @@ export function DuckPreview() {
           shadow-mapSize={[1024, 1024]}
         />
         <Duck variant={variant} clip={clip} scale={scale} />
+        <Suspense fallback={null}>
+          <Tree position={[3, 0, 0]} scale={0.01} />
+        </Suspense>
         <Grid
           args={[20, 20]}
           cellSize={0.5}
