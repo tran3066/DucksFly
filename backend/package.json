@@ -1,0 +1,32 @@
+{
+  "name": "@ducksfly/backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DucksFly authoritative multiplayer server (Colyseus). Person D — Backend, Multiplayer & Lobby.",
+  "type": "module",
+  "main": "build/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node build/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@colyseus/core": "^0.17.43",
+    "@colyseus/schema": "^4.0.26",
+    "@colyseus/ws-transport": "^0.17.13",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@colyseus/testing": "^0.17.11",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.9.1",
+    "tsx": "^4.22.3",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7"
+  }
+}
