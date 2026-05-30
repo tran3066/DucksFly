@@ -24,7 +24,7 @@
   "devDependencies": {
     "@colyseus/testing": "^0.17.11",
     "@types/express": "^5.0.6",
-    "@types/node": "^25.9.1",
+    "@types/node": "^24.12.4",
     "tsx": "^4.22.3",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7"

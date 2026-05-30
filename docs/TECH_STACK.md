@@ -116,36 +116,58 @@ npm i zustand
 ### Multiplayer client
 
 ```bash
-npm i colyseus.js
+npm i @colyseus/sdk
 ```
 
 | Package | Target version | Role |
 |---|---|---|
-| colyseus.js | ^0.16 (match the server) | The client half of the multiplayer system; talks to the server. |
+| @colyseus/sdk | ^0.17 (match the server) | The client half of the multiplayer system; talks to the server. Replaces the old `colyseus.js` package, which was renamed to `@colyseus/sdk` in 0.17. |
 
 ---
 
-## Backend: to install
+## Backend: installed and locked
 
-Run these from the `backend/` folder. The backend is the game server: it hosts the race
-room, relays positions, and makes the fair rulings described in
-[ARCHITECTURE.md](./ARCHITECTURE.md#3-who-decides-what).
+These are the exact versions recorded in the committed `backend/package-lock.json`. The
+backend is the game server: it hosts the race room, relays positions, and makes the fair
+rulings described in [ARCHITECTURE.md](./ARCHITECTURE.md#3-who-decides-what). It is
+scaffolded (`backend/package.json`, `tsconfig.json`, `vitest.config.ts`) with the scripts
+`dev`, `build`, `start`, `test`, and `test:watch`.
 
 ```bash
-npm i colyseus @colyseus/core @colyseus/schema
-npm i -D typescript tsx @types/node
+# from backend/ (this is the command that was actually run)
+npm i @colyseus/core @colyseus/ws-transport @colyseus/schema express
+npm i -D typescript tsx vitest @colyseus/testing @types/node @types/express
 ```
 
-| Package | Target version | Role |
+| Package | Version | Role |
 |---|---|---|
-| colyseus / @colyseus/core | ^0.16 | The multiplayer server framework (rooms, lobby, broadcasting). |
-| @colyseus/schema | match colyseus | Efficiently syncs the shared room state to all clients. |
-| typescript | align with frontend (6.x) | Same language on both sides. |
-| tsx | latest | Runs the TypeScript server during development without a separate build step. |
-| @types/node | ^24 | Type definitions for Node.js. |
+| @colyseus/core | 0.17.43 | The multiplayer server framework (rooms, lobby, broadcasting, state sync). |
+| @colyseus/ws-transport | 0.17.13 | The WebSocket transport (built on the `ws` library) that carries the connections. |
+| @colyseus/schema | 4.0.26 | Efficiently syncs the shared room state to all clients. |
+| express | 5.2.1 | Tiny HTTP layer for the health route used by the host (Railway). |
+| typescript | 6.0.3 | Same language on both sides (matches the frontend 6.x). |
+| tsx | 4.22.3 | Runs the TypeScript server during development without a separate build step. |
+| vitest | 4.1.7 | Test runner for the tests-first backend workflow. |
+| @colyseus/testing | 0.17.11 | Spins up an in-memory server to integration-test the race room. |
+| @types/node | 24.12.4 | Type definitions for Node.js (matches the frontend). |
+| @types/express | 5.0.6 | Type definitions for express. |
 
-Important: keep the client (`colyseus.js`) and the server (`colyseus`) on the same minor
-version (0.16.x). They must agree on the network format to talk to each other.
+Important: keep the client (`@colyseus/sdk`) and the server (`@colyseus/core`) on the same
+minor version (0.17.x), and `@colyseus/schema` on 4.x on both sides. They must agree on the
+network format to talk to each other.
+
+Why `@colyseus/core` + `@colyseus/ws-transport` instead of the all-in-one `colyseus`
+package: the `colyseus` meta-package transitively pulls in `@colyseus/uwebsockets-transport`,
+whose `uWebSockets.js` dependency is distributed only as a Git tag (installed over SSH) and
+will not install in a restricted/sandboxed environment. `@colyseus/core` plus the standard
+`ws` transport is the supported, lighter alternative and is all we need; uWebSockets is
+purely an optional high-throughput transport and makes no observable difference at 8 players.
+
+Why 0.17 (the docs previously pinned 0.16): nothing was locked to 0.16 on disk yet, and
+0.17 adds automatic reconnection (a player whose webcam/tab hiccups mid-race rejoins
+seamlessly), a cleaner `defineServer()` API, and full-stack TypeScript types. No feature we
+rely on changed. The only ripple is the client package rename (`colyseus.js` ->
+`@colyseus/sdk`), reflected above.
 
 ---
 
@@ -169,14 +191,14 @@ flowchart TB
         REND["three + React Three Fiber + drei<br/>(draws the 3D world)"]
         MP["MediaPipe<br/>(reads the body)"]
         ST["Zustand<br/>(holds app state)"]
-        NETC["colyseus.js<br/>(talks to the server)"]
+        NETC["@colyseus/sdk<br/>(talks to the server)"]
     end
     subgraph BE["Backend (the server)"]
-        COL["Colyseus<br/>(hosts the race, relays positions)"]
+        COL["@colyseus/core + ws-transport<br/>(hosts the race, relays positions)"]
     end
     SH["Shared types<br/>(DuckActions, RaceRoomState)"]
 
-    NETC <-->|"same 0.16.x version"| COL
+    NETC <-->|"same 0.17.x version"| COL
     SH -.->|"imported by"| FE
     SH -.->|"imported by"| BE
 
@@ -198,8 +220,9 @@ flowchart TB
    `package.json` allow ranges; what actually ships is whatever the lockfile records.)
 3. When you install one of the "to install" packages, read back the resolved version and
    move it into the locked table with its exact number.
-4. Match versions across boundaries: three with @types/three; colyseus with colyseus.js
-   on the same minor version; React Three Fiber 9 with drei 10 with React 19.
+4. Match versions across boundaries: three with @types/three; the server (@colyseus/core)
+   with the client (@colyseus/sdk) on the same minor version (0.17.x) and @colyseus/schema
+   4.x on both; React Three Fiber 9 with drei 10 with React 19.
 5. Do not upgrade mid-hackathon. Lock at the start, build, and ship. Upgrades come after
    the demo.
 
@@ -218,8 +241,16 @@ npm run dev          # starts the Vite dev server with live reload
 Other scripts: `npm run build` (type-check then build for production), `npm run lint`
 (check the code), `npm run preview` (preview the production build).
 
-Backend: the server is not scaffolded yet. See
-[backend/HowToRun.md](../backend/HowToRun.md).
+Backend (also in [backend/HowToRun.md](../backend/HowToRun.md)):
+
+```bash
+cd backend
+npm install
+npm run dev          # runs the TypeScript server with tsx watch
+```
+
+Other scripts: `npm run build` (compile to `build/`), `npm start` (run the compiled
+server), `npm test` (run the test suite once), `npm run test:watch` (re-run on change).
 
 ---
 
@@ -273,11 +304,13 @@ What each tool is, and how DucksFly uses it.
   to hold things like the current screen, the race phase, and the player's settings in
   one place, so any component can read them without passing data through many layers.
 
-- Colyseus (server package "colyseus"; client package "colyseus.js"). What it is: a
+- Colyseus (server package "@colyseus/core"; client package "@colyseus/sdk"). What it is: a
   framework for real-time multiplayer games that provides rooms, a lobby, and automatic
   state synchronization out of the box. How we use it: the server hosts a race room and
   shares each player's position with everyone else automatically, which saves us from
-  hand-building all of that networking in 24 hours.
+  hand-building all of that networking in 24 hours. We are on the 0.17.x line; the client
+  package was named `colyseus.js` before 0.17 and is now `@colyseus/sdk`. The connections
+  themselves run over plain WebSockets via `@colyseus/ws-transport`.
 
 - @colyseus/schema. What it is: the part of Colyseus that efficiently sends only what
   changed in the shared state to each client. How we use it: to keep the position updates

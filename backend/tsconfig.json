@@ -6,6 +6,11 @@
     "lib": ["ES2022"],
     "rootDir": "src",
     "outDir": "build",
+    "baseUrl": ".",
+    "paths": {
+      "@shared": ["../types/index.ts"],
+      "@shared/*": ["../types/*"]
+    },
     "experimentalDecorators": true,
     "useDefineForClassFields": false,
     "strict": true,
