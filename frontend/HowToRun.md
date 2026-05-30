@@ -1,1 +1,7 @@
-Please put human ez to read how to run here:
+## Frontend
+
+```
+cd frontend
+npm install
+npm run dev
+```
