@@ -1,0 +1,29 @@
+{
+  "_comment": "Extracted from the Unity .fbx.meta (productId 231310, 'Low Poly Bird: Mallard Duck' v1.0). The FBX ships ONE continuous take ('Bird_Rig|MallardDuckAnimation', frames 0-1812). These are the frame ranges Unity used to slice it into named clips. three.js FBXLoader does NOT read this split, so loadDuck.ts re-slices the single clip with THREE.AnimationUtils.subclip using these ranges. 'loop' true = cyclic motion (hold the action), false = one-shot transition (play once).",
+  "totalFrames": 1812,
+  "take": "Bird_Rig|MallardDuckAnimation",
+  "clips": [
+    { "name": "flight_straight",    "start": 0,    "end": 25,   "loop": true,  "group": "air" },
+    { "name": "flight_turn_right",  "start": 40,   "end": 64,   "loop": true,  "group": "air" },
+    { "name": "flight_turn_left",   "start": 80,   "end": 105,  "loop": true,  "group": "air" },
+    { "name": "glide_straight",     "start": 120,  "end": 200,  "loop": true,  "group": "air" },
+    { "name": "glide_turn_right",   "start": 220,  "end": 300,  "loop": true,  "group": "air" },
+    { "name": "glide_turn_left",    "start": 320,  "end": 400,  "loop": true,  "group": "air" },
+    { "name": "hover_flight",       "start": 420,  "end": 440,  "loop": true,  "group": "air" },
+    { "name": "idle_1",             "start": 460,  "end": 520,  "loop": true,  "group": "ground" },
+    { "name": "idle_2",             "start": 540,  "end": 780,  "loop": true,  "group": "ground" },
+    { "name": "touch_down",         "start": 820,  "end": 863,  "loop": false, "group": "transition" },
+    { "name": "take_off",           "start": 920,  "end": 965,  "loop": false, "group": "transition" },
+    { "name": "walk",               "start": 1000, "end": 1027, "loop": true,  "group": "ground" },
+    { "name": "water_touch_down",   "start": 1044, "end": 1093, "loop": false, "group": "transition" },
+    { "name": "water_take_off",     "start": 1109, "end": 1157, "loop": false, "group": "transition" },
+    { "name": "swim_straight",      "start": 1176, "end": 1197, "loop": true,  "group": "water" },
+    { "name": "swim_left",          "start": 1225, "end": 1246, "loop": true,  "group": "water" },
+    { "name": "swim_right",         "start": 1273, "end": 1294, "loop": true,  "group": "water" },
+    { "name": "water_idle_1",       "start": 1320, "end": 1380, "loop": true,  "group": "water" },
+    { "name": "sit_down",           "start": 1440, "end": 1464, "loop": false, "group": "transition" },
+    { "name": "stand_up",           "start": 1469, "end": 1493, "loop": false, "group": "transition" },
+    { "name": "sitting_idle_1",     "start": 1536, "end": 1596, "loop": true,  "group": "ground" },
+    { "name": "sitting_idle_2",     "start": 1632, "end": 1812, "loop": true,  "group": "ground" }
+  ]
+}
