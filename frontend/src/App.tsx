@@ -1,9 +1,8 @@
-import { DuckPreview } from './duck/DuckPreview'
+import { PhysicsSandbox } from './test/PhysicsSandbox'
 
-// Dev harness for the duck model. Replace with the real game scene during
-// integration — see src/duck/Duck.tsx for the reusable <Duck /> component.
+// Person C physics test harness. Swap this out once the real game shell exists.
 function App() {
-  return <DuckPreview />
+  return <PhysicsSandbox />
 }
 
 export default App
