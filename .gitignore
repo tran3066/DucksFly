@@ -1,1 +1,27 @@
+# OS junk
 .DS_Store
+
+# Editor and AI-tool local files (per-developer, not shared)
+.claude/
+.cursor/
+.vscode/
+.idea/
+
+# Dependencies and build output (safety net; subprojects have their own too)
+node_modules/
+dist/
+dist-ssr/
+build/
+*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Env files
+.env
+.env.*
+!.env.example
