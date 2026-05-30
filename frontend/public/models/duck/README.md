@@ -6,13 +6,19 @@ the web-relevant files only — all Unity engine glue (`.meta`, `.cs`, `.mat`,
 `.prefab`, `.controller`, the demo scene) was removed.
 
 ## Files
-| File | What it is |
-|---|---|
-| `mallard-duck.fbx` | Rigged mesh + skeleton + all animations (3.7 MB, FBX 7400 binary) |
-| `mallard-male.png` | Male (green-head) texture — 32×32 color atlas |
-| `mallard-female.png` | Female (brown) texture — 32×32 color atlas |
-| `animations.json` | Frame ranges that slice the single FBX take into 22 named clips |
-| `loadDuck.ts` | Loader: applies the texture + re-slices the clips for three.js |
+This folder holds only the **binary assets** (served statically by Vite at
+`/models/duck/...`). The loader, clip data, and R3F component live in
+**`frontend/src/duck/`** so TypeScript compiles + bundles them.
+
+| File | Where | What it is |
+|---|---|---|
+| `mallard-duck.fbx` | here (`public`) | Rigged mesh + skeleton + all animations (3.7 MB, FBX 7400 binary) |
+| `mallard-male.png` | here (`public`) | Male (green-head) texture — 32×32 color atlas |
+| `mallard-female.png` | here (`public`) | Female (brown) texture — 32×32 color atlas |
+| `animations.json` | `src/duck/` | Frame ranges that slice the single FBX take into 22 named clips |
+| `loadDuck.ts` | `src/duck/` | Loader: applies the texture + re-slices the clips for three.js |
+| `Duck.tsx` | `src/duck/` | React-three-fiber `<Duck />` component (wraps `loadDuck`) |
+| `DuckPreview.tsx` | `src/duck/` | Dev harness to eyeball variants/clips/scale |
 
 ## Two things that will bite you if you don't know them
 
@@ -27,23 +33,36 @@ the web-relevant files only — all Unity engine glue (`.meta`, `.cs`, `.mat`,
 
 ## Usage
 
+**React-three-fiber (preferred)** — use the `<Duck />` component:
+
+```tsx
+import { Duck } from '../duck/Duck'
+
+<Duck variant="male" clip="flight_straight" position={[0, 2, 0]} scale={1} />
+```
+
+Drive animation declaratively via the `clip` prop, or imperatively from a fast
+input loop via `onReady`:
+
+```tsx
+const duckRef = useRef<LoadedDuck | null>(null)
+<Duck onReady={(d) => (duckRef.current = d)} />
+// later, from the MediaPipe/action loop:  duckRef.current?.play('flight_straight')
+```
+
+**Plain three.js** — use the loader directly:
+
 ```ts
-import { loadDuck } from '/models/duck/loadDuck' // adjust import to your setup
+import { loadDuck } from '../duck/loadDuck'
 
 const duck = await loadDuck('male')   // or 'female'
 scene.add(duck.scene)
 duck.play('idle_1')
-
-// render loop:
-duck.update(delta)
-
-// when MediaPipe reports a flap:
-duck.play('flight_straight')
+duck.update(delta)            // every frame
+duck.play('flight_straight')  // on flap
 ```
 
-Requires `three` (`npm i three @types/three`). For react-three-fiber, wrap
-`duck.scene` in `<primitive object={duck.scene} />` and drive `duck.update(dt)`
-from `useFrame`.
+Requires `three`, `@react-three/fiber`, `@react-three/drei`.
 
 ## Animation clips (mapped to DuckActions)
 - **Air:** `flight_straight`, `flight_turn_left`, `flight_turn_right`,

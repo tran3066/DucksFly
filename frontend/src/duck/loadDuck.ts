@@ -1,8 +1,8 @@
 import * as THREE from 'three'
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js'
 
-// Sits next to the model so the asset is self-contained. Move into src/ if you
-// prefer; just fix the fetch path to animations.json below.
+// Clip frame-ranges live next to this loader. The binary assets (FBX + PNGs)
+// stay in /public/models/duck and are fetched by URL (see BASE below).
 import clipData from './animations.json'
 
 const BASE = '/models/duck'
@@ -27,7 +27,7 @@ export interface LoadedDuck {
   update: (dt: number) => void
 }
 
-let cachedTextures: Partial<Record<DuckVariant, THREE.Texture>> = {}
+const cachedTextures: Partial<Record<DuckVariant, THREE.Texture>> = {}
 
 function loadTexture(variant: DuckVariant): THREE.Texture {
   if (cachedTextures[variant]) return cachedTextures[variant]!
@@ -85,6 +85,15 @@ export async function loadDuck(variant: DuckVariant = 'male'): Promise<LoadedDuc
     clips[c.name as ClipName] = sub
     loopByName[c.name as ClipName] = c.loop
   }
+
+  // TEMP DIAGNOSTIC: report the model's real size so we can pick the right scale.
+  const _box = new THREE.Box3().setFromObject(fbx)
+  const _size = _box.getSize(new THREE.Vector3())
+  const _center = _box.getCenter(new THREE.Vector3())
+  console.warn(
+    `[duck] raw bbox size = ${_size.x.toFixed(2)} x ${_size.y.toFixed(2)} x ${_size.z.toFixed(2)}, ` +
+      `center = (${_center.x.toFixed(2)}, ${_center.y.toFixed(2)}, ${_center.z.toFixed(2)})`,
+  )
 
   const mixer = new THREE.AnimationMixer(fbx)
   let current: THREE.AnimationAction | null = null
