@@ -33,12 +33,20 @@
 - Consumes A's actions; produces the duck's pos/vel that gets rendered + sent to the server.
 
 ### Person D — Backend, Multiplayer & Lobby
-- Colyseus server: room lifecycle, lobby→countdown→race→finished state machine.
+- **Networking — pick ONE (Person D's call):**
+  - **Colyseus** — dedicated authoritative Node server. True server-authority (collisions, scoring),
+    more control, but you host/deploy a server.
+  - **Playroom Kit** — serverless/managed multiplayer SDK. Fastest to set up, handles rooms/lobby/state +
+    host logic; authority lives on a "host" client instead of a real server. Least infra for a hackathon.
+- Room lifecycle + state machine: lobby→countdown→race→finished.
 - Multiplayer: position broadcast + interpolation contract, map seed distribution, up to 8 players.
-- Player-vs-player collision detection (server-side) → emit `spinOut`.
+- Player-vs-player collision detection (authoritative side) → emit `spinOut`.
 - Scoring, lap/ring validation, leaderboard.
 - Lobby (ducks together) + client networking hook (`useRoom`) feeding the others.
-- Deployment
+- Deployment.
+
+> ⚠️ Colyseus = "server-authoritative" cleanly. Playroom = "host-authoritative" (one client is the
+> authority). The §Shared "server authoritative for…" items map onto whichever host you pick.
 
 ---
 
