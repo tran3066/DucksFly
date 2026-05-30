@@ -2,7 +2,7 @@ import { Suspense, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Grid, OrbitControls } from '@react-three/drei'
 import { Duck } from './Duck'
-import { Tree } from './Tree'
+import { Bush, Tree } from './NatureProp'
 import type { ClipName, DuckVariant } from './loadDuck'
 
 // A few representative clips for eyeballing the animations.
@@ -42,7 +42,8 @@ export function DuckPreview() {
         />
         <Duck variant={variant} clip={clip} scale={scale} />
         <Suspense fallback={null}>
-          <Tree position={[3, 0, 0]} scale={0.01} />
+          <Tree position={[3, 0, 0]} />
+          <Bush position={[-3, 0, 0]} />
         </Suspense>
         <Grid
           args={[20, 20]}
