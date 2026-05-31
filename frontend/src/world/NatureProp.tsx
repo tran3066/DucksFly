@@ -5,8 +5,9 @@ import type { ThreeElements } from '@react-three/fiber'
 
 // The SimpleNaturePack: a set of low-poly FBX props that all share one tiny
 // palette atlas, which lives in the pack folder alongside the models.
-const PACK_DIR = '/models/SimpleNaturePack'
-const ATLAS_URL = `${PACK_DIR}/NaturePackLite_Texture_01.png`
+// Exported so the instanced map renderer (world/Scenery.tsx) reuses them.
+export const PACK_DIR = '/models/SimpleNaturePack'
+export const ATLAS_URL = `${PACK_DIR}/NaturePackLite_Texture_01.png`
 
 export type NaturePropProps = ThreeElements['group'] & {
   /** FBX filename within /models/SimpleNaturePack, e.g. "Tree_01.fbx". */
