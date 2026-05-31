@@ -56,3 +56,11 @@ export function playSixSeven(): void {
 export function isSixSevenPlaying(): boolean {
   return isSfxPlaying(SIX_SEVEN_URL)
 }
+
+const QUACK_URL = '/sounds/quack.mp3'
+
+/** The duck quack, played on the rising edge of an open mouth. playSfx already
+ *  skips while it is mid-play, so rapid quacks never overlap or queue. */
+export function playQuack(): void {
+  playSfx(QUACK_URL)
+}

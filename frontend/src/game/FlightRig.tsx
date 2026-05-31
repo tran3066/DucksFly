@@ -33,7 +33,7 @@ import { getBaseline, useCalibrationStore } from '../input/calibration'
 import { diveFromArmsDown, type FlapStrategy } from '../input/gestures/flap'
 import { computeLean, type LeanCalib } from '../input/gestures/lean'
 import { detectSixSeven, makeSixSevenState } from '../input/gestures/sixSeven'
-import { playSixSeven, isSixSevenPlaying } from './sfx'
+import { playSixSeven, isSixSevenPlaying, playQuack } from './sfx'
 import type { LandmarkFrame } from '../input/fixtures/landmarks'
 import {
   GESTURE_TURN,
@@ -149,6 +149,9 @@ export function FlightRig({
   // the start of a race never reads as the gesture.
   const wasRunningRef = useRef(false)
   const runStartMsRef = useRef(0)
+  // Track the open-mouth state so we play the quack on the rising edge (mouth just
+  // opened), once per open, instead of every frame the mouth is held open.
+  const wasQuackingRef = useRef(false)
 
   useFrame((_, delta) => {
     const cfg = cfgRef.current
@@ -250,6 +253,10 @@ export function FlightRig({
       const gLean = cameraControl ? gestureLeanRef.current : 0
       const gDive = cameraControl ? gestureDiveRef.current : 0
       const gQuack = cameraControl && useInputStore.getState().jawOpen > QUACK_THRESHOLD
+      // Rising edge of the open mouth -> play the quack once. playSfx skips while it
+      // is still playing, so holding the mouth open or rapid quacks never overlap.
+      if (gQuack && !wasQuackingRef.current) playQuack()
+      wasQuackingRef.current = gQuack
       const merged: DuckActions = {
         flap: Math.min(1, base.flap + k.flap + gFlap),
         flapImpulse: false,
