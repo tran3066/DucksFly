@@ -11,6 +11,13 @@ const ATLAS_URL = '/models/NaturePackLite_Texture_01.png'
 export type NaturePropProps = ThreeElements['group'] & {
   /** FBX filename within /models/SimpleNaturePack, e.g. "Tree_01.fbx". */
   file: string
+  /**
+   * If set, normalize the model so its bounding-box height equals this many
+   * world units, regardless of the FBX's raw export scale. Use for props whose
+   * source models have inconsistent scales (the rocks). Leave unset and use the
+   * `scale` prop for props that share a consistent raw scale (trees, ground).
+   */
+  fitHeight?: number
 }
 
 /**
@@ -22,7 +29,7 @@ export type NaturePropProps = ThreeElements['group'] & {
  *
  * Prefer the named presets below (<Tree>, <Bush>) which also carry a sane scale.
  */
-export function NatureProp({ file, ...props }: NaturePropProps) {
+export function NatureProp({ file, fitHeight, ...props }: NaturePropProps) {
   const fbx = useFBX(`${PACK_DIR}/${file}`)
   const atlas = useTexture(ATLAS_URL)
 
@@ -49,8 +56,15 @@ export function NatureProp({ file, ...props }: NaturePropProps) {
       })
     })
 
+    // Optionally normalize to a target height, so props with wildly different
+    // raw export scales (rocks: 0.1 to 195 units) all come out usably sized.
+    if (fitHeight) {
+      const h = new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3()).y
+      if (h > 0) root.scale.multiplyScalar(fitHeight / h)
+    }
+
     return root
-  }, [fbx, atlas])
+  }, [fbx, atlas, fitHeight])
 
   return (
     <group {...props}>
@@ -89,4 +103,18 @@ export function Ground({
   ...props
 }: ThreeElements['group'] & { variant?: GroundVariant }) {
   return <NatureProp file={`Ground_0${variant}.fbx`} scale={0.4} {...props} />
+}
+
+/** The available rocks in the pack (Rock_01.fbx … Rock_05.fbx). */
+export type RockVariant = 1 | 2 | 3 | 4 | 5
+export const ROCK_VARIANTS: RockVariant[] = [1, 2, 3, 4, 5]
+
+// Rock source models have wildly inconsistent raw scales (~0.1 to ~195 units),
+// so a single `scale` can't work. Normalize each to ~1.2 units tall instead;
+// callers can still vary size per placement with the `scale` prop.
+export function Rock({
+  variant = 1,
+  ...props
+}: ThreeElements['group'] & { variant?: RockVariant }) {
+  return <NatureProp file={`Rock_0${variant}.fbx`} fitHeight={1.2} {...props} />
 }

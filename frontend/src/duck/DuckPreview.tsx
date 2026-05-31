@@ -2,7 +2,15 @@ import { Suspense, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Grid, OrbitControls } from '@react-three/drei'
 import { Duck } from './Duck'
-import { Bush, Ground, GROUND_VARIANTS, Tree, TREE_VARIANTS } from './NatureProp'
+import {
+  Bush,
+  Ground,
+  GROUND_VARIANTS,
+  Rock,
+  ROCK_VARIANTS,
+  Tree,
+  TREE_VARIANTS,
+} from './NatureProp'
 import type { ClipName, DuckVariant } from './loadDuck'
 
 // A few representative clips for eyeballing the animations.
@@ -49,6 +57,10 @@ export function DuckPreview() {
           {/* Three ground tiles laid edge-to-edge (~12 units each) to show tiling. */}
           {GROUND_VARIANTS.map((v, i) => (
             <Ground key={v} variant={v} position={[(i - 1) * 12, 0, 10]} />
+          ))}
+          {/* All five rocks in a row to the side. */}
+          {ROCK_VARIANTS.map((v, i) => (
+            <Rock key={v} variant={v} position={[(i - 2) * 3, 0, 3]} />
           ))}
           <Bush position={[-3, 0, 0]} />
         </Suspense>
