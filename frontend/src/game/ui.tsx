@@ -226,4 +226,8 @@ export const UI_KEYFRAMES = `
   0%   { transform: scale(0.6); opacity: 0; }
   60%  { transform: scale(1.08); opacity: 1; }
   100% { transform: scale(1); }
+}
+@keyframes ducksfly-flash {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.3; }
 }`
