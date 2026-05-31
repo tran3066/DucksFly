@@ -21,10 +21,12 @@
    → **Docker build context must be the repo root**, copying BOTH `backend/` and `types/`.
    A Dockerfile rooted in `backend/` alone will fail (`Cannot find module @shared/...`).
 
-2. **`tsup` bundles via esbuild and reads `tsconfig.json` `paths`**, so `@shared/*`
-   resolves to `../types/*` at build time and the result is bundled into a
-   self-contained `build/index.js`. This works only if `../types` exists in the
-   build context (see #1).
+2. **`tsup` reads `tsconfig.json` `paths`** so `@shared/*` resolves to `../types/*`
+   and gets bundled — BUT tsup **externalizes everything in `dependencies`**
+   (`@colyseus/*`, `express`) by default. So `build/index.js` still `import`s those
+   at runtime → the runtime image MUST contain production `node_modules`
+   (`npm ci --omit=dev`). Confirmed by deploy crash: `ERR_MODULE_NOT_FOUND:
+   Cannot find package '@colyseus/core'`. Build context for `../types` still required (#1).
 
 3. **ESM runtime requirement.** Build output is ESM (`--format esm`) and
    `package.json` has `"type": "module"`. If the runtime image contains
