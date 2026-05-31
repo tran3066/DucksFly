@@ -158,8 +158,9 @@ networking term for one race that a group of players share.)
 ```ts
 RaceRoomState {
   phase: "lobby" | "countdown" | "racing" | "finished"
-  mapSeed: number      // one number that lets every client build the same world
-  ringLayout: RingDef[]// where the rings are, sent once when you join
+  mapSeed: number      // ONE number -> every client builds the same world,
+                       // including ring + checkpoint positions, via the shared
+                       // buildMap(seed) recipe. No ring layout is sent separately.
   countdownEndsAt: number
   players: Map<id, PlayerState>
 }
@@ -169,7 +170,8 @@ PlayerState {
   pos: [x, y, z]       // position, updated 15 to 20 times per second
   vel: [x, y, z]       // velocity (speed and direction)
   quat: [x, y, z, w]   // which way the duck is facing
-  ringsPassed, lap, rank
+  ringsPassed, rank    // 'lap' is reserved: the current map is a single-pass
+                       // straightaway (start -> finish), so there are no laps yet.
   spunOut: boolean
 }
 ```
@@ -192,8 +194,8 @@ sequenceDiagram
     participant S as Server
 
     P->>S: I want to join (my name, my duck)
-    S-->>P: Welcome. Here is the map recipe and ring layout
-    Note over P: Build the world from the recipe
+    S-->>P: Welcome. Here is the map recipe (one seed)
+    Note over P: Build the world from the seed (terrain, rings, checkpoints)
     S-->>P: Phase is now "lobby" (waiting for players)
     S-->>P: Phase is now "countdown" (3, 2, 1)
     S-->>P: Phase is now "racing"
@@ -209,8 +211,9 @@ sequenceDiagram
     S-->>P: Phase is now "finished". Here are the final ranks
 ```
 
-Explanation. When you join, the server welcomes you and sends the recipe for the world
-(see section 6) and the ring positions. Your browser builds the world from that recipe.
+Explanation. When you join, the server welcomes you and sends the recipe for the world:
+a single seed (see section 6). Your browser builds the entire world from that seed —
+terrain, rings, and checkpoints all come out of the same recipe.
 The server then moves the whole group through phases: waiting in the lobby, a short
 countdown, and then racing. During the race, your browser repeatedly tells the server
 where your duck is, and the server repeatedly tells you where everyone else is. When you
@@ -230,13 +233,14 @@ flowchart LR
     GEN --> T["Terrain (hills)"]
     GEN --> C["Clouds"]
     GEN --> P["Trees, water, rocks"]
-    RINGS["Ring layout"] --> SAME
+    GEN --> R["Rings + checkpoints"]
     T --> SAME["The identical world,<br/>built on every player's computer"]
     C --> SAME
     P --> SAME
+    R --> SAME
 
     classDef a fill:#EAF4FF,stroke:#3D7DBF,color:#10212F
-    class SEED,GEN,T,C,P,RINGS,SAME a
+    class SEED,GEN,T,C,P,R,SAME a
 ```
 
 Explanation. Instead of sending a large 3D map across the network, the server sends one
@@ -244,8 +248,10 @@ number, called a seed. A seed is a starting value for a recipe that produces ran
 in a repeatable way: the same seed always produces the same result. Every player's
 browser runs the same recipe with the same seed, so everyone builds an identical world,
 with the hills, clouds, and trees in the same places. This keeps the network message
-tiny and guarantees that all players see the same course. The exact ring positions are
-sent alongside the seed so they are always in agreement.
+tiny and guarantees that all players see the same course. The ring and checkpoint
+positions are not sent separately: they are produced by the very same seeded recipe
+(`buildMap(seed)`), which the gameplay and server code import too, so everyone is always
+in agreement from the single number.
 
 ---
 

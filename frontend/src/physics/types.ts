@@ -44,16 +44,20 @@ export interface DuckState {
 }
 
 export interface PhysicsConfig {
-  /** Constant downward pull when not flapping (units/s). */
+  /** Gravitational acceleration, always pulling down (units/s^2). */
   gravity: number;
-  /** Upward climb velocity at flap=1 (units/s). */
-  climbGain: number;
-  /** One-shot vertical kick added on flapImpulse (units/s). */
+  /** Upward thrust acceleration at flap=1 (units/s^2). Fights gravity to climb. */
+  climbThrust: number;
+  /** One-shot vertical velocity kick added on flapImpulse (units/s). Person A's
+   * binary-flap model; the keyboard sandbox uses continuous flap instead. */
   flapKick: number;
   /** Forward acceleration at dive=1 (units/s^2). Only way to speed up. */
   diveAccel: number;
-  /** Extra downward velocity at dive=1 (units/s). */
+  /** Extra downward acceleration at dive=1 (units/s^2). */
   diveSink: number;
+  /** Vertical air drag (per second). Bounds climb/sink to a terminal rate and
+   * smooths flap impulses into arcs. */
+  vertDrag: number;
   /** Linear drag coefficient on forward speed (per second). */
   drag: number;
   /** Minimum forward speed — glide floor (units/s). */
