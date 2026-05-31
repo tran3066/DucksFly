@@ -261,13 +261,21 @@ export function SinglePlayerGame({
         ringPulseAt={ringPulseAt}
         rig={rig}
       />
-      <Hud
-        stateRef={stateRef}
-        actionsRef={mergedActionsRef}
-        clipRef={clipRef}
-        boostRef={boostRef}
+      <RaceStats
+        runStartRef={runStartRef}
+        finishedRef={finishedRef}
         passedRingsRef={passedRingsRef}
+        ringCount={map.rings.length}
       />
+      {debug && (
+        <Hud
+          stateRef={stateRef}
+          actionsRef={mergedActionsRef}
+          clipRef={clipRef}
+          boostRef={boostRef}
+          passedRingsRef={passedRingsRef}
+        />
+      )}
       <ControlsHint cameraControl={cameraControl} />
       <DebugToggle debug={debug} onToggle={() => setDebug((d) => !d)} />
       <ControlModeToggle
@@ -280,6 +288,104 @@ export function SinglePlayerGame({
       {finished && finishStats && (
         <FinishOverlay stats={finishStats} onReset={resetState} onExit={onExit} />
       )}
+    </div>
+  )
+}
+
+/** Big, glanceable time + rings readout, shown across the top while flying. */
+function RaceStats({
+  runStartRef,
+  finishedRef,
+  passedRingsRef,
+  ringCount,
+}: {
+  runStartRef: React.RefObject<number>
+  finishedRef: React.RefObject<boolean>
+  passedRingsRef: React.RefObject<Set<number>>
+  ringCount: number
+}) {
+  const [snap, setSnap] = useState({ ms: 0, rings: 0 })
+  const frozenMsRef = useRef<number | null>(null)
+  useEffect(() => {
+    const id = setInterval(() => {
+      // Freeze the clock at the moment we cross the finish line.
+      if (finishedRef.current) {
+        if (frozenMsRef.current == null) frozenMsRef.current = performance.now() - runStartRef.current
+      } else {
+        frozenMsRef.current = null
+      }
+      setSnap({
+        ms: frozenMsRef.current ?? performance.now() - runStartRef.current,
+        rings: passedRingsRef.current.size,
+      })
+    }, 100)
+    return () => clearInterval(id)
+  }, [runStartRef, finishedRef, passedRingsRef])
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 14,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        display: 'flex',
+        gap: 12,
+      }}
+    >
+      <BigStat label="TIME" value={formatTime(snap.ms)} />
+      <BigStat label="RINGS" value={`${snap.rings}`} suffix={`/ ${ringCount}`} accent={COLORS.accent} />
+    </div>
+  )
+}
+
+/** A large, glanceable stat tile (big number + small caption). */
+function BigStat({
+  label,
+  value,
+  suffix,
+  accent = COLORS.text,
+}: {
+  label: string
+  value: string
+  suffix?: string
+  accent?: string
+}) {
+  return (
+    <div
+      style={{
+        padding: '8px 18px',
+        minWidth: 96,
+        borderRadius: 12,
+        background: 'rgba(10,18,30,0.66)',
+        border: '1px solid rgba(120,150,180,0.18)',
+        backdropFilter: 'blur(6px)',
+        pointerEvents: 'none',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 2,
+      }}
+    >
+      <span style={{ color: COLORS.dim, fontSize: '0.72rem', letterSpacing: 2, fontWeight: 700 }}>
+        {label}
+      </span>
+      <span
+        style={{
+          fontSize: '2.4rem',
+          fontWeight: 800,
+          lineHeight: 1.05,
+          color: accent,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {value}
+        {suffix && (
+          <span style={{ fontSize: '1.1rem', color: COLORS.dim, fontWeight: 600, marginLeft: 4 }}>
+            {suffix}
+          </span>
+        )}
+      </span>
     </div>
   )
 }

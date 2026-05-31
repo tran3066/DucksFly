@@ -2,7 +2,7 @@
 // leaderboard on the right, and a control hint at the bottom. Shown while you're still flying
 // (phase === 'racing' and you haven't crossed the line).
 
-import { useEffect, useState } from 'react'
+import { type CSSProperties, useEffect, useState } from 'react'
 import type { PlayerView, RaceSnapshot } from '../../net/types'
 import { COLORS, FONT_DISPLAY, FONT_MONO, KeyCap, cutPath, formatTime } from '../ui'
 import { hudPanel, hudRowStyle } from './parts'
@@ -25,6 +25,8 @@ export function RaceHud({
 
   const ranked = [...race.players].sort((a, b) => (a.rank || 99) - (b.rank || 99))
   const elapsed = race.raceStartAt > 0 ? Date.now() - race.raceStartAt : 0
+  const rank = self?.rank || 0
+  const total = race.players.length
 
   // Once the first player crosses the line the server opens a finish-grace window; flash a
   // countdown at the top so everyone still flying knows the race is about to end.
@@ -36,61 +38,56 @@ export function RaceHud({
     <>
       {finisher && race.finishWindowEndsAt > 0 && <FinishBanner name={finisher.name} secs={graceLeft} />}
 
-      {/* Top-center: time + rings stat chips */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 20,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          display: 'flex',
-          gap: 10,
-        }}
-      >
-        <StatChip label="TIME" value={formatTime(elapsed)} color={COLORS.cyan} />
-        <StatChip
+      {/* Big, glanceable telemetry across the top-left: time, rings, position. */}
+      <div style={{ position: 'absolute', top: 14, left: 14, display: 'flex', gap: 12 }}>
+        <BigStat label="TIME" value={formatTime(elapsed)} />
+        <BigStat
           label="RINGS"
           value={`${self?.ringsPassed ?? 0}`}
-          suffix={`/${ringCount}`}
-          color={COLORS.yellow}
+          suffix={`/ ${ringCount}`}
+          accent={COLORS.accent}
         />
-        <StatChip
-          label="RANK"
-          value={`${self?.rank || '–'}`}
-          suffix={`/${race.players.length}`}
-          color={COLORS.yellow}
+        <BigStat
+          label="POSITION"
+          value={rank ? `${rank}` : '–'}
+          suffix={`/ ${total}`}
+          accent={rank === 1 ? COLORS.gold : COLORS.accentBlue}
         />
       </div>
 
-      {/* Top-right: leaderboard */}
-      <div style={{ ...hudPanel, top: 20, right: 20, minWidth: 200, pointerEvents: 'auto' }}>
-        <div
-          style={{
-            color: COLORS.hudDim,
-            marginBottom: 9,
-            paddingBottom: 9,
-            borderBottom: `1px solid ${COLORS.hudLine}`,
-            fontSize: '0.65rem',
-            letterSpacing: 2,
-            fontWeight: 700,
-            textAlign: 'center',
-          }}
-        >
+      <div style={{ ...hudPanel, top: 14, right: 14, minWidth: 220, padding: '14px 16px' }}>
+        <div style={{ color: COLORS.dim, marginBottom: 10, fontSize: '0.8rem', letterSpacing: 1.5, fontWeight: 700 }}>
           LEADERBOARD
         </div>
-        {ranked.map((p) => (
-          <div key={p.id} style={hudRowStyle}>
-            <span
+        {ranked.map((p) => {
+          const me = p.id === race.sessionId
+          return (
+            <div
+              key={p.id}
               style={{
-                color: p.id === race.sessionId ? COLORS.yellow : COLORS.hudText,
-                fontWeight: p.id === race.sessionId ? 700 : 500,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: 14,
+                padding: '4px 6px',
+                marginBottom: 2,
+                borderRadius: 8,
+                background: me ? 'rgba(255,210,63,0.12)' : 'transparent',
+                fontSize: '1.05rem',
+                fontWeight: me ? 800 : 600,
               }}
             >
-              {p.rank || '–'}. {p.name}
-            </span>
-            <span style={{ color: COLORS.hudDim }}>{p.finished ? '🏁' : `${p.ringsPassed}`}</span>
-          </div>
-        ))}
+              <span style={{ color: me ? COLORS.gold : COLORS.text }}>
+                <span style={{ opacity: 0.6, marginRight: 8 }}>{p.rank || '–'}</span>
+                {p.name}
+                {me ? ' (you)' : ''}
+              </span>
+              <span style={{ color: p.finished ? COLORS.good : COLORS.dim, fontVariantNumeric: 'tabular-nums' }}>
+                {p.finished ? '🏁' : `${p.ringsPassed}`}
+              </span>
+            </div>
+          )
+        })}
       </div>
 
       <ControlsLegend />
@@ -98,48 +95,54 @@ export function RaceHud({
   )
 }
 
-/** Top-center mono stat chip for time/rings/rank (HUD goal block). */
-function StatChip({
+/** A large, glanceable stat tile (big number + small caption). */
+function BigStat({
   label,
   value,
   suffix,
-  color,
+  accent = COLORS.text,
 }: {
   label: string
   value: string
   suffix?: string
-  color: string
+  accent?: string
 }) {
   return (
     <div
       style={{
-        background: COLORS.hud,
-        border: `1px solid ${COLORS.hudLine}`,
-        clipPath: cutPath(),
-        padding: '10px 22px',
-        textAlign: 'center',
-        backdropFilter: 'blur(7px)',
-        WebkitBackdropFilter: 'blur(7px)',
+        ...hudPanel,
+        position: 'static',
+        padding: '8px 18px',
+        minWidth: 96,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 2,
       }}
     >
-      <div style={{ fontFamily: FONT_MONO, fontWeight: 700, fontSize: '1.7rem', color, lineHeight: 1 }}>
-        {value}
-        {suffix && <span style={{ color: COLORS.hudDim, fontSize: '1.05rem' }}>{suffix}</span>}
-      </div>
-      <div
-        style={{
-          fontFamily: FONT_MONO,
-          fontSize: '0.62rem',
-          letterSpacing: 2,
-          color: COLORS.hudDim,
-          marginTop: 4,
-          fontWeight: 500,
-        }}
-      >
+      <span style={{ color: COLORS.dim, fontSize: '0.72rem', letterSpacing: 2, fontWeight: 700 }}>
         {label}
-      </div>
+      </span>
+      <span style={bigValueStyle(accent)}>
+        {value}
+        {suffix && (
+          <span style={{ fontSize: '1.1rem', color: COLORS.dim, fontWeight: 600, marginLeft: 4 }}>
+            {suffix}
+          </span>
+        )}
+      </span>
     </div>
   )
+}
+
+function bigValueStyle(color: string): CSSProperties {
+  return {
+    fontSize: '2.4rem',
+    fontWeight: 800,
+    lineHeight: 1.05,
+    color,
+    fontVariantNumeric: 'tabular-nums',
+  }
 }
 
 /** Small flashing top-center banner: someone finished, the race ends in `secs`. */

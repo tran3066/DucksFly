@@ -6,6 +6,7 @@ import type { MapDef, RingDef } from '../map';
 import { Scenery } from '../world/Scenery';
 import { GroundPlane } from '../world/GroundPlane';
 import { Mountains } from '../world/Mountains';
+import { StageEnd } from '../world/StageEnd';
 
 /**
  * Placeholder environment renderer for the generation test run. Deliberately
@@ -25,22 +26,32 @@ export function MapView({
   passedRingIds: Set<number>;
   ringPulseAt?: Map<number, number>;
 }) {
-  const midZ = map.length / 2;
-
   // Extend the ground out past the furthest scenery AND the flanking mountain
   // range so both have something to stand on (no void between corridor + peaks).
   const sceneryReach = map.scenery.reduce((m, s) => Math.max(m, Math.abs(s.pos[0])), map.halfWidth);
   const groundHalfX = Math.max(sceneryReach, map.halfWidth + 520) + 20;
 
+  // The end clearing: ground extends past the finish, and the mountains wrap
+  // around it (sides run to the back wall; a back wall encloses behind the pond).
+  const BACK_WALL_Z = map.length + 290; // mountains wrap across here
+  const END_PAD = 700; // ground runs well past the back wall (mountains stand on it)
+  const groundLength = map.length + END_PAD;
+
   return (
     <group>
-      {/* Ground plane (tiling grass texture), widened to cover the scenery bands. */}
-      <GroundPlane width={groundHalfX * 2} length={map.length} y={map.floorY} midZ={midZ} />
+      {/* Ground plane (tiling grass texture), widened to cover the scenery bands
+          and extended past the finish for the end clearing. */}
+      <GroundPlane
+        width={groundHalfX * 2}
+        length={groundLength}
+        y={map.floorY}
+        midZ={groundLength / 2}
+      />
 
       {/* Mountain range lining both sides as a natural barrier (replaces the old
           translucent walls). The duck is still clamped to ±halfWidth by physics. */}
       <Suspense fallback={null}>
-        <Mountains map={map} />
+        <Mountains map={map} endZ={BACK_WALL_Z} backZ={BACK_WALL_Z} />
       </Suspense>
 
       {/* Start + finish + intermediate checkpoint lines, raised well clear of the
@@ -75,6 +86,7 @@ export function MapView({
       {/* Real seed-generated nature-pack scenery, instanced for performance. */}
       <Suspense fallback={null}>
         <Scenery map={map} />
+        <StageEnd map={map} />
       </Suspense>
     </group>
   );

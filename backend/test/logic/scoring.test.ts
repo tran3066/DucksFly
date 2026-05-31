@@ -4,14 +4,15 @@ import { computeLeaderboard, type LeaderboardInput } from "@/logic/scoring";
 /**
  * Leaderboard ranking (docs/ARCHITECTURE.md §3). Ring/finish detection is client-side now;
  * the server only orders players: finishers first (by finish time ascending), then everyone
- * else by rings passed descending, ties broken deterministically by id.
+ * else by forward progress (proximity to the finish line) descending, ties broken
+ * deterministically by id.
  */
 
 describe("computeLeaderboard", () => {
   it("ranks finished players ahead of unfinished, by finish time ascending", () => {
     const entries: LeaderboardInput[] = [
-      { id: "slow", ringsPassed: 6, finished: true, finishTime: 2_000 },
-      { id: "fast", ringsPassed: 6, finished: true, finishTime: 1_000 },
+      { id: "slow", progress: 2_000, finished: true, finishTime: 2_000 },
+      { id: "fast", progress: 2_000, finished: true, finishTime: 1_000 },
     ];
     const ranked = computeLeaderboard(entries);
     expect(ranked.map((e) => e.id)).toEqual(["fast", "slow"]);
@@ -20,9 +21,9 @@ describe("computeLeaderboard", () => {
 
   it("ranks unfinished players behind finished ones, by progress descending", () => {
     const entries: LeaderboardInput[] = [
-      { id: "behind", ringsPassed: 2, finished: false, finishTime: 0 },
-      { id: "ahead", ringsPassed: 5, finished: false, finishTime: 0 },
-      { id: "done", ringsPassed: 6, finished: true, finishTime: 1_000 },
+      { id: "behind", progress: 200, finished: false, finishTime: 0 },
+      { id: "ahead", progress: 800, finished: false, finishTime: 0 },
+      { id: "done", progress: 2_000, finished: true, finishTime: 1_000 },
     ];
     const ranked = computeLeaderboard(entries);
     expect(ranked.map((e) => e.id)).toEqual(["done", "ahead", "behind"]);
@@ -31,8 +32,8 @@ describe("computeLeaderboard", () => {
 
   it("breaks ties deterministically by id", () => {
     const entries: LeaderboardInput[] = [
-      { id: "b", ringsPassed: 3, finished: false, finishTime: 0 },
-      { id: "a", ringsPassed: 3, finished: false, finishTime: 0 },
+      { id: "b", progress: 300, finished: false, finishTime: 0 },
+      { id: "a", progress: 300, finished: false, finishTime: 0 },
     ];
     const ranked = computeLeaderboard(entries);
     expect(ranked.map((e) => e.id)).toEqual(["a", "b"]);
@@ -46,7 +47,7 @@ describe("computeLeaderboard — edge cases", () => {
 
   it("ranks a single player first", () => {
     const ranked = computeLeaderboard([
-      { id: "solo", ringsPassed: 1, finished: false, finishTime: 0 },
+      { id: "solo", progress: 100, finished: false, finishTime: 0 },
     ]);
     expect(ranked).toHaveLength(1);
     expect(ranked[0].rank).toBe(1);
@@ -54,16 +55,16 @@ describe("computeLeaderboard — edge cases", () => {
 
   it("breaks a finish-time tie between two finished players by id", () => {
     const entries: LeaderboardInput[] = [
-      { id: "zoe", ringsPassed: 6, finished: true, finishTime: 5_000 },
-      { id: "amy", ringsPassed: 6, finished: true, finishTime: 5_000 },
+      { id: "zoe", progress: 2_000, finished: true, finishTime: 5_000 },
+      { id: "amy", progress: 2_000, finished: true, finishTime: 5_000 },
     ];
     expect(computeLeaderboard(entries).map((e) => e.id)).toEqual(["amy", "zoe"]);
   });
 
-  it("keeps a finished player ahead of an unfinished one with equal ring count", () => {
+  it("keeps a finished player ahead of an unfinished one that is further along", () => {
     const entries: LeaderboardInput[] = [
-      { id: "stuck", ringsPassed: 6, finished: false, finishTime: 0 },
-      { id: "done", ringsPassed: 6, finished: true, finishTime: 9_000 },
+      { id: "stuck", progress: 1_999, finished: false, finishTime: 0 },
+      { id: "done", progress: 1_000, finished: true, finishTime: 9_000 },
     ];
     expect(computeLeaderboard(entries).map((e) => e.id)).toEqual(["done", "stuck"]);
   });
@@ -71,7 +72,7 @@ describe("computeLeaderboard — edge cases", () => {
   it("assigns a complete, gap-free 1..n ranking for a full lobby", () => {
     const entries: LeaderboardInput[] = Array.from({ length: 8 }, (_, i) => ({
       id: `p${i}`,
-      ringsPassed: i,
+      progress: i * 100,
       finished: false,
       finishTime: 0,
     }));
@@ -81,8 +82,8 @@ describe("computeLeaderboard — edge cases", () => {
 
   it("does not mutate the input array", () => {
     const entries: LeaderboardInput[] = [
-      { id: "b", ringsPassed: 1, finished: false, finishTime: 0 },
-      { id: "a", ringsPassed: 2, finished: false, finishTime: 0 },
+      { id: "b", progress: 100, finished: false, finishTime: 0 },
+      { id: "a", progress: 200, finished: false, finishTime: 0 },
     ];
     const before = entries.map((e) => e.id);
     computeLeaderboard(entries);
