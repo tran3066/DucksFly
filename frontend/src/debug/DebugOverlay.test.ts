@@ -5,7 +5,7 @@
 // so the math is verified in isolation from the drawing code.
 
 import { describe, it, expect } from 'vitest'
-import { project, resolveEdge } from './DebugOverlay'
+import { project, resolveEdge, isBodyPoseLandmark } from './DebugOverlay'
 
 describe('project (normalized -> pixels)', () => {
   it('scales center to canvas center', () => {
@@ -62,5 +62,29 @@ describe('resolveEdge (face-mesh connection -> two pixel points)', () => {
     // skipped (null) instead of crashing on an undefined landmark.
     expect(resolveEdge(frame, { start: 0, end: 99 }, 640, 480)).toBeNull()
     expect(resolveEdge(frame, { start: 99, end: 1 }, 640, 480)).toBeNull()
+  })
+})
+
+describe('isBodyPoseLandmark (which pose dots to draw)', () => {
+  it('skips every head/face pose landmark (indices 0..10)', () => {
+    // 0 nose, 1-6 eyes, 7-8 ears, 9-10 mouth corners: all on the face, all
+    // covered by the face mesh, so none should be drawn as a green pose dot.
+    for (let i = 0; i <= 10; i++) {
+      expect(isBodyPoseLandmark(i)).toBe(false)
+    }
+  })
+
+  it('draws body landmarks (shoulders, wrists, hips) at index 11 and up', () => {
+    expect(isBodyPoseLandmark(11)).toBe(true) // left shoulder
+    expect(isBodyPoseLandmark(16)).toBe(true) // right wrist
+    expect(isBodyPoseLandmark(24)).toBe(true) // right hip
+  })
+
+  it('ADVERSARIAL: the boundary is exactly at 10 (face) / 11 (first body joint)', () => {
+    // The mouth-right point (10) is still face and must be skipped; the left
+    // shoulder (11) is the first body joint and must be drawn. An off-by-one here
+    // would either clutter the mouth with a dot or drop a shoulder joint.
+    expect(isBodyPoseLandmark(10)).toBe(false)
+    expect(isBodyPoseLandmark(11)).toBe(true)
   })
 })

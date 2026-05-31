@@ -93,6 +93,22 @@ const CONNECTIONS: Array<[number, number]> = [
   [23, 24], // hip line
 ]
 
+// MediaPipe Pose indices 0..10 are head/face points (0 nose, 1-6 eyes, 7-8 ears,
+// 9-10 mouth corners). The Face Landmarker mesh + lips below already cover the
+// face far more richly, so drawing these as green dots only clutters the face.
+// We draw pose dots for BODY joints only (index >= 11); the skeleton already
+// connects body joints exclusively.
+const POSE_FACE_LANDMARK_MAX = 10
+
+/**
+ * True for the pose landmarks we draw as dots: body joints only (index > 10).
+ * Head/face landmarks (0..10) are left to the face mesh + lips overlay so the
+ * face shows only the mesh, never duplicate green pose dots.
+ */
+export function isBodyPoseLandmark(index: number): boolean {
+  return index > POSE_FACE_LANDMARK_MAX
+}
+
 // Drawing constants. The dot color is intentionally a loud, high-contrast green
 // so joints pop over any video frame; the skeleton lines are a soft translucent
 // white so they read as faint structure without fighting the dots for attention.
@@ -178,7 +194,11 @@ export function DebugOverlay({
       // 2) Dots on top. Tint each dot's opacity by its visibility so weak
       //    tracking looks faint and confident tracking looks solid; that makes a
       //    bad joint obvious at a glance instead of a confident-looking lie.
-      for (const lm of landmarks) {
+      //    Head/face points (0..10) are skipped: the face mesh owns the face, so
+      //    we never stack green dots over the eyes/nose/mouth.
+      for (let i = 0; i < landmarks.length; i++) {
+        if (!isBodyPoseLandmark(i)) continue
+        const lm = landmarks[i]
         if (!lm) continue
         const { x, y } = project(lm, width, height)
         // visibility is 0..1; fall back to fully opaque if it is ever missing,

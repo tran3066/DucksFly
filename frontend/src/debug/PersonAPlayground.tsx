@@ -41,6 +41,7 @@ function PlaygroundRig({
   stateRef,
   actionsRef,
   cfgRef,
+  activeRef,
   impulseRef,
   duckRef,
   duckVisual,
@@ -61,6 +62,7 @@ function PlaygroundRig({
   stateRef: React.RefObject<DuckState>
   actionsRef: React.RefObject<DuckActions>
   cfgRef: React.RefObject<FlightConfig>
+  activeRef: React.RefObject<boolean>
   impulseRef: React.RefObject<boolean>
   duckRef: React.RefObject<Group | null>
   duckVisual: { scale: number; modelYaw: number; crossfade: number }
@@ -87,10 +89,23 @@ function PlaygroundRig({
     // half-width, so the lateral clamp always matches the rendered side walls.
     cfg.lateralRange = mapRef.current.halfWidth
 
-    // While the run is frozen at the finish line we stop advancing the sim (the
-    // duck holds its final pose); we still fall through to re-draw it below so the
-    // chase camera can settle behind it.
-    if (!finishedRef.current) {
+    // Calibration in progress: HOLD the duck where it is (do not advance the sim),
+    // relax it to the idle/hover pose, and drop any accumulated time so the run
+    // does not lurch forward the instant calibration completes. On first load the
+    // duck waits at its start pose (y=100, a good viewing height); a mid-run
+    // recalibrate freezes it in place. We still fall through to re-draw it so the
+    // chase camera stays settled behind the waiting duck.
+    if (!activeRef.current) {
+      mergedRef.current = makeIdleActions()
+      accRef.current = 0
+      // Drop any one-shot wingbeat queued while frozen (the keyboard stays live
+      // during calibration, so a Space tap would otherwise latch impulseRef and
+      // fire a climb kick the instant the run resumes). The sim loop is the only
+      // other place this is cleared, and it does not run while inactive.
+      impulseRef.current = false
+    } else if (!finishedRef.current) {
+      // While the run is frozen at the finish line we likewise stop advancing the
+      // sim (the duck holds its final pose); the same re-draw below settles the cam.
       accRef.current += Math.min(delta, MAX_FRAME_DT)
 
       // Merge the slider baseline with live keyboard input ONCE per frame (neither
@@ -320,6 +335,16 @@ export function PersonAPlayground() {
   const [finished, setFinished] = useState(false)
   const onFinish = useCallback(() => setFinished(true), [])
 
+  // Calibration gate: the game is INACTIVE (the duck is held hovering, the sim
+  // paused) until calibration completes, and again whenever the player re-opens
+  // the gate to recalibrate. WebcamPanel drives this via onActiveChange; activeRef
+  // mirrors it for the useFrame sim loop (refs are only written in effects).
+  const [active, setActive] = useState(false)
+  const activeRef = useRef(false)
+  useEffect(() => {
+    activeRef.current = active
+  }, [active])
+
   // Stable handlers: ref access lives inside event callbacks, never in render.
   const fireImpulse = useCallback(() => {
     impulseRef.current = true
@@ -501,6 +526,7 @@ export function PersonAPlayground() {
           stateRef={stateRef}
           actionsRef={actionsRef}
           cfgRef={cfgRef}
+          activeRef={activeRef}
           impulseRef={impulseRef}
           duckRef={duckGroupRef}
           duckVisual={duckVisual}
@@ -531,8 +557,10 @@ export function PersonAPlayground() {
       <DebugToggle debug={debug} onToggle={() => setDebug((d) => !d)} />
       {finished && <FinishOverlay stateRef={stateRef} onReset={resetState} />}
       {/* Webcam feed (bottom-left) + landmark overlay, plus the start-of-session
-          calibration gate. Owns the entire MediaPipe pipeline; mount it once. */}
-      <WebcamPanel onCalibrated={handleCalibrated} />
+          calibration gate. Owns the entire MediaPipe pipeline; mount it once.
+          onActiveChange freezes the duck (held hovering) while the gate is open
+          and starts/resumes the run once calibration completes. */}
+      <WebcamPanel onCalibrated={handleCalibrated} onActiveChange={setActive} />
     </div>
   )
 }

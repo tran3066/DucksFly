@@ -83,7 +83,10 @@ export const DEFAULT_FLIGHT: FlightConfig = {
 
 export function createFlightState(): DuckState {
   return {
-    position: [0, 40, 0],
+    // y is the start altitude: 100 = 2.5x the original 40, for a higher opening
+    // view. The follow camera and the calibration "waiting" freeze both derive
+    // their start from here, so this single value moves everything together.
+    position: [0, 100, 0],
     yaw: 0, // heading locked forever
     speed: DEFAULT_FLIGHT.baseForwardSpeed,
     pitch: 0,
