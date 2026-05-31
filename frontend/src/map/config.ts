@@ -9,8 +9,8 @@ export const DEFAULT_MAP_CONFIG: MapConfig = {
   floorY: 0, //    matches physics DEFAULT_CONFIG.groundY
   startSafeZ: 100,
   ringGap: 100, // ~20 rings over the track; ~5 s apart at dive speed
-  ringRadius: 6, // "forgiving" tier — tighten to 4 / 2.5 by playtest
-  ringMaxOffsetX: 60,
+  ringRadius: 8, // big "MediaPipe-forgiving" gate (clean opening ≈ radius − duckRadius); tighten by playtest
+  ringMaxOffsetX: 60, // less lateral spread so rings are easier to line up with lean controls
   ringMinY: 30,
   ringMaxY: 170, // spread rings across (nearly) the full height band, not just the low third
   checkpointGap: 450, // ~4 checkpoints + finish
