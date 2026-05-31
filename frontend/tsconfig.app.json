@@ -16,6 +16,12 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
+    /* Shared contracts at repo-root types/ (see docs/ARCHITECTURE.md §4) */
+    "paths": {
+      "@shared": ["../types/index.ts"],
+      "@shared/*": ["../types/*"]
+    },
+
     /* Linting */
     "noUnusedLocals": true,
     "noUnusedParameters": true,
