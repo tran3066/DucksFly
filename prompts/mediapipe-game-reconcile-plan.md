@@ -166,6 +166,53 @@ Use the debug leva DEFAULTS as fixed production values (the playground's tuned s
 
 ---
 
+## Source → Destination inventory (exactly what moves, from where, to where)
+
+"Move" = relocate the logic. "Reuse" = import as-is, no copy, no edit. "New" = small
+new glue. "Edit" = minimal change to an existing file. Nothing else changes.
+
+| # | What | FROM (source + approx lines) | TO (destination) | Action | Behavior change? |
+|---|------|------------------------------|------------------|--------|------------------|
+| 1 | Gesture per-frame block: flap (rate/binary), lean, dive, quack, flap-pulse decay, stale-pose reset, impulse one-shot | `debug/PersonAPlayground.tsx` `PlaygroundRig.useFrame` ~150–290 | `game/FlightRig.tsx` `useFrame` (new gesture refs + merge) | MOVE (copy verbatim; PlaygroundRig stays for legacy route) | NONE — same math, gated by `cameraControl` |
+| 2 | Gesture refs: `flapStrategyRef, lastPoseFrameRef, gestureFlapRef, flapPulseRef, gestureLeanRef, gestureDiveRef, stalePoseTicksRef, turnCfgRef, diveCfgRef` | `debug/PersonAPlayground.tsx` 496–522 | `game/FlightRig.tsx` (local refs) | MOVE | NONE |
+| 3 | Gesture default VALUES (flapMode `rate`, rateGain 11.5, sensitivity 0.02, rateDecay 0.3, high 0.25/low 0.08/refractory 6, turnMode `lean`, mirrorSign −1, maxTilt 28°, wingSat 0.8, turnSmoothing 0.4, dive 0.4/1.5/0.4) | `debug/PersonAPlayground.tsx` Leva `gestures` 631–670 + `turnCfgRef/diveCfgRef` 500–512 | `game/` fixed consts (e.g. `game/gestureConfig.ts` NEW) consumed by FlightRig | MOVE leva-defaults → constants | NONE — defaults become fixed |
+| 4 | Constants `QUACK_THRESHOLD 0.4`, `STALE_POSE_TICKS 15`, `FLAP_PULSE_DECAY_RATE 6` | `debug/PersonAPlayground.tsx` 41/49/55 | `game/FlightRig.tsx` (or `game/gestureConfig.ts`) | MOVE | NONE |
+| 5 | `flapAnimSpeed 2.5` (+ `flapHoldSeconds 0.35`) | `debug/PersonAPlayground.tsx` Leva `duckVisual` 679–680 | `game/FlightRig.tsx` `duckVisual` passed to `<Duck>` | MOVE value | Wingbeat anim speed 1.8→2.5 (intended parity) |
+| 6 | `WebcamPanel` (camera + pose/face loops + calibration gate + docked feed + Recalibrate) | `debug/WebcamPanel.tsx` | mounted in `game/Game.tsx` root | REUSE + small EDIT (items 7–9) | NONE for legacy; new mount point |
+| 7 | `calibrated` initial value | `debug/WebcamPanel.tsx` 163 | same file | EDIT → `useState(() => getBaseline() !== null)` | Remount with baseline skips gate (desired) |
+| 8 | Gate-open signal for sim freeze | `debug/WebcamPanel.tsx` `onActiveChange` 446–448 | also write a store flag | EDIT (additive) | none (legacy prop still fires) |
+| 9 | `allowRecalibrate` prop (hide Recalibrate mid-race) | — | `debug/WebcamPanel.tsx` Recalibrate button 609–647 | EDIT (new optional prop, defaults true) | none when unset |
+| 10 | `gateOpen` flag + setter | — | `input/calibration.ts` `useCalibrationStore` (or new tiny store) | NEW (additive field) | none |
+| 11 | Control-mode state + `<ModeChooser>` + persistent WebcamPanel mount + prop down | — | `game/Game.tsx` + `game/ModeChooser.tsx` NEW | NEW | new chooser screen |
+| 12 | `cameraControl` (+ `allowRecalibrate`) prop pass-through | — | `game/SinglePlayerGame.tsx`, `game/MultiplayerGame.tsx` → `FlightRigProps` | EDIT | none to sim/net |
+| 13 | `ControlsHint` gesture legend in camera mode + in-game camera↔keyboard toggle | — | `game/SinglePlayerGame.tsx` / shared UI | NEW (small) | UI only |
+| — | Gesture libs: `input/gestures/flap.ts`, `input/gestures/lean.ts`, `input/calibration.ts`, `input/store.ts`, `input/pose/*`, `input/webcam.ts`, `input/config.ts` | `input/**` | unchanged | REUSE (import only) | NONE |
+| — | Flight model + boost config | `debug/flightModel.ts`, `debug/playgroundConfig.ts` (via `game/flight.ts`, `game/gameConfig.ts`) | unchanged | REUSE (already re-exported) | NONE |
+
+## Explicitly NOT ported (leave behind — avoids adding extra things)
+- `debug/PersonAPlayground.tsx` itself — untouched, keeps `?view=playground` working.
+- `debug/PlaygroundRig` — stays in PersonAPlayground (legacy). We COPY its gesture
+  block into FlightRig; we do not delete or move the original.
+- Leva panels (`Actions (manual)`, `Flight`, `Camera`, `Boost`, `Gestures`,
+  `Duck`) — NOT added to MP. SP keeps its EXISTING leva; a `Gestures` folder in SP is
+  OPTIONAL (decision 3). No new leva anywhere else.
+- `GestureDebug` HUD readout (`gestureDbgRef` + Hud gesture rows) — debug-only
+  diagnostics; NOT ported to the game HUD (optional later, not in scope).
+- `DebugArena.tsx`, `DebugOverlay.tsx` — `DebugArena` unused; `DebugOverlay` is used
+  INSIDE WebcamPanel's feed, so it comes along with WebcamPanel unchanged. No separate port.
+- No changes to: `flightModel.ts`, `playgroundConfig.ts`, `physics/*`, `map/*`,
+  `net/*`, backend, ring/tree collision, respawn, finish logic, MP payload.
+
+## Anti-scope-creep guardrails
+- Diff budget: new files = `game/ModeChooser.tsx`, `game/gestureConfig.ts`. Edited
+  files = `Game.tsx`, `FlightRig.tsx`, `SinglePlayerGame.tsx`, `MultiplayerGame.tsx`,
+  `WebcamPanel.tsx`, `calibration.ts`. If a change is needed OUTSIDE this list, STOP
+  and re-confirm.
+- When `cameraControl === false`, `FlightRig` must compute byte-identical actions to
+  today (gesture terms provably 0). Verify by diffing the merge expression.
+- Port gestures by COPY, then confirm the copied block matches the debug source
+  line-for-line (no "improvements" while moving).
+
 ## Files touched (summary)
 - `game/Game.tsx` — control mode state, ModeChooser, persistent WebcamPanel mount, prop down.
 - `game/ModeChooser.tsx` — NEW small overlay.
