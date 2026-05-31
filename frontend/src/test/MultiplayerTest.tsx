@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { DuckVariant } from "@shared/network";
-import { raceConnection, SERVER_URL } from "../net/connection";
+import { raceConnection } from "../net/connection";
+import { getServerUrl } from "../net/serverConfig";
 import { useRace, isHost } from "../net/useRace";
 import "./test.css";
 
@@ -55,7 +56,7 @@ export function MultiplayerTest() {
       <header className="bar">
         <h1>🦆 DucksFly · multiplayer test harness</h1>
         <div className="meta">
-          <span>server <code>{SERVER_URL}</code></span>
+          <span>server <code>{getServerUrl()}</code></span>
           <span>status <b className={`st-${race.status}`}>{race.status}</b></span>
           <span>phase <b>{race.phase}</b></span>
           {race.sessionId && (

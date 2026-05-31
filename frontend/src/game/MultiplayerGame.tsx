@@ -22,7 +22,9 @@ import { BOOST } from './gameConfig'
 import { FlightScene } from './FlightScene'
 import type { FlightRigProps } from './FlightRig'
 import { RemoteDucks } from './RemoteDuck'
-import { raceConnection, SERVER_URL } from '../net/connection'
+import { raceConnection } from '../net/connection'
+import { getServerUrl } from '../net/serverConfig'
+import { ServerPicker } from '../net/ServerPicker'
 import { useRace, isHost } from '../net/useRace'
 import type { PlayerView, RaceSnapshot } from '../net/types'
 import { POSITION_SEND_HZ } from '@shared/constants'
@@ -223,13 +225,14 @@ function Lobby({
     <div style={overlayStyle}>
       <div style={panelStyle}>
         <h1 style={{ fontSize: '1.3rem', margin: '0 0 4px' }}>🦆 DucksFly · Race</h1>
-        <p className="tip" style={{ margin: '0 0 16px' }}>
-          server <code>{SERVER_URL}</code> · status{' '}
+        <p className="tip" style={{ margin: '0 0 12px' }}>
+          server <code>{getServerUrl()}</code> · status{' '}
           <b className={`st-${race.status}`}>{race.status}</b>
         </p>
 
         {!connected ? (
           <form className="join" onSubmit={join} style={{ marginTop: 0 }}>
+            <ServerPicker disabled={race.status === 'connecting'} />
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="name" />
             <select value={variant} onChange={(e) => setVariant(e.target.value as DuckVariant)}>
               <option value="male">male</option>
