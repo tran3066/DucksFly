@@ -11,4 +11,13 @@ export default defineConfig({
       '@shared': fileURLToPath(new URL('../types', import.meta.url)),
     },
   },
+  build: {
+    rollupOptions: {
+      input: {
+        // The game app, plus the standalone multiplayer test harness (see test.html).
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        test: fileURLToPath(new URL('./test.html', import.meta.url)),
+      },
+    },
+  },
 })

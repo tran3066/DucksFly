@@ -87,7 +87,10 @@ export class RaceRoom extends Room<{ state: RaceState }> {
   }
 
   onJoin(client: Client, options: JoinOptions = {} as JoinOptions): void {
-    if (this.hostId === undefined) this.hostId = client.sessionId;
+    if (this.hostId === undefined) {
+      this.hostId = client.sessionId;
+      this.state.hostId = client.sessionId;
+    }
 
     const player = new PlayerSchema();
     player.id = client.sessionId;
@@ -106,6 +109,7 @@ export class RaceRoom extends Room<{ state: RaceState }> {
     if (client.sessionId === this.hostId) {
       const next = this.state.players.keys().next();
       this.hostId = next.done ? undefined : next.value;
+      this.state.hostId = this.hostId ?? "";
     }
   }
 

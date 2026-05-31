@@ -63,5 +63,7 @@ export class RaceState extends Schema {
   @type([RingSchema]) ringLayout = new ArraySchema<RingSchema>();
   /** Epoch ms when the countdown ends (0 outside of countdown). */
   @type("number") countdownEndsAt = 0;
+  /** sessionId of the host (the only player allowed to start); "" if the room is empty. */
+  @type("string") hostId = "";
   @type({ map: PlayerSchema }) players = new MapSchema<PlayerSchema>();
 }
