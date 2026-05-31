@@ -270,11 +270,7 @@ export function PersonAPlayground() {
     confidence: { value: 1, min: 0, max: 1, step: 0.01 },
     quack: false,
     egg67: false,
-    // leva's button() takes its handler at definition time; the closures only run
-    // on click, never during render (false positives for react-hooks/refs).
-    // eslint-disable-next-line react-hooks/refs
     flapImpulse: button(fireImpulse),
-    // eslint-disable-next-line react-hooks/refs
     reset: button(resetState),
   })
 
