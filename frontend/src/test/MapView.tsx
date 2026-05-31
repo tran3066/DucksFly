@@ -58,10 +58,12 @@ export function MapView({
           floor (no near-coplanar z-fight) and rendered as solid stripes. */}
       {map.checkpoints.map((cp) => (
         <group key={cp.id} position={[0, 0, cp.z]}>
-          <mesh position={[0, 1, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-            <planeGeometry args={[map.halfWidth * 2, 5]} />
-            <meshStandardMaterial color={cp.isFinish ? '#ffd24a' : '#eef6ff'} side={DoubleSide} />
-          </mesh>
+          {cp.isFinish && (
+            <mesh position={[0, 1, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <planeGeometry args={[map.halfWidth * 2, 5]} />
+              <meshStandardMaterial color="#ffd24a" side={DoubleSide} />
+            </mesh>
+          )}
           <Text
             position={[0, 6, 0]}
             fontSize={6}
