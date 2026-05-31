@@ -20,7 +20,8 @@ function App() {
   if (view === 'race') return <MultiplayerRace />
   if (view === 'multiplayer') return <MultiplayerTest />
   if (view === 'playground') return <PersonAPlayground />
-  return <DuckPreview />
+  if (view === 'preview') return <DuckPreview />
+  return <Game />
 }
 
 export default App
