@@ -26,7 +26,7 @@ export function RemoteDuck({ player }: { player: PlayerView }) {
   const targetPos = useRef(new Vector3())
   const targetQuat = useRef(new Quaternion())
 
-  useFrame(() => {
+  useFrame((state) => {
     const p = target.current
     actionsRef.current = inferActions(p.vel, p.quat)
 
@@ -42,8 +42,13 @@ export function RemoteDuck({ player }: { player: PlayerView }) {
       duck.position.lerp(targetPos.current, 0.2)
       duck.quaternion.slerp(targetQuat.current, 0.25)
     }
-    // Keep the name tag over the duck without inheriting its bank/pitch.
-    if (labelRef.current) labelRef.current.position.copy(duck.position)
+    // Keep the name tag over the duck without inheriting its bank/pitch, and
+    // billboard it toward the camera so it always reads left-to-right (otherwise
+    // the chase cam views it from behind and the text looks mirrored).
+    if (labelRef.current) {
+      labelRef.current.position.copy(duck.position)
+      labelRef.current.quaternion.copy(state.camera.quaternion)
+    }
   })
 
   const color = player.spunOut ? '#ff6b6b' : '#bfefff'

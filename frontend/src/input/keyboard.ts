@@ -62,8 +62,17 @@ export function useKeyboardControls(
       out.current = keysToActions(held)
     }
 
+    // Don't hijack control keys while the user is typing into a text field
+    // (e.g. the multiplayer name input) — otherwise W/A/D never reach it.
+    const isEditableTarget = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null
+      if (!el) return false
+      const tag = el.tagName
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
+    }
+
     const down = (e: KeyboardEvent) => {
-      if (!TRACKED.has(e.code)) return
+      if (!TRACKED.has(e.code) || isEditableTarget(e)) return
       e.preventDefault()
       const wasHeld = held.has(e.code)
       held.add(e.code)
