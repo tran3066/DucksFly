@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Sky } from '@react-three/drei';
 import { useControls, button, folder } from 'leva';
 import { Group, Vector3 } from 'three';
 import {
@@ -15,6 +14,7 @@ import {
 import { buildMap, ringCrossing, DEFAULT_MAP_CONFIG, type MapDef } from '../map';
 import { DuckModel } from './DuckModel';
 import { MapView } from './MapView';
+import { SimpleSky } from '../world/SimpleSky';
 
 const MAX_FRAME_DT = 0.1; // clamp to avoid spiral-of-death after a stall
 
@@ -308,7 +308,9 @@ export function PhysicsSandbox() {
   return (
     <div style={{ position: 'fixed', inset: 0 }}>
       <Canvas shadows camera={{ position: [0, 26, -16], fov: 60, near: 1, far: 5000 }}>
-        <Sky sunPosition={[100, 40, 100]} />
+        <Suspense fallback={null}>
+          <SimpleSky map={map} />
+        </Suspense>
         <ambientLight intensity={0.6} />
         <directionalLight position={[50, 80, 20]} intensity={1.2} castShadow />
         <MapView map={map} passedRingIds={passedRef.current} />
