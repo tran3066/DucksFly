@@ -2,12 +2,17 @@ import type { PhysicsConfig, DuckState } from './types';
 
 // Starting feel constants. Every one of these is exposed as a live slider in the
 // test sandbox so the flap-vs-gravity / dive-vs-drag balance can be tuned by feel.
+// Vertical model (integrated): at flap f the terminal vertical velocity is
+//   (f*climbThrust - gravity) / vertDrag.
+// Defaults below give: terminal sink ~ -8 u/s (f=0), terminal climb ~ +12 u/s (f=1),
+// hover at f ~ 0.4 (gravity/climbThrust) — so you spam flap to keep ~0.4 average.
 export const DEFAULT_CONFIG: PhysicsConfig = {
-  gravity: 9,
-  climbGain: 14,
-  flapKick: 4,
+  gravity: 12,
+  climbThrust: 30,
+  flapKick: 3,
   diveAccel: 40,
   diveSink: 12,
+  vertDrag: 1.5,
   drag: 0.35,
   minSpeed: 2,
   maxTurnRate: 1.6,

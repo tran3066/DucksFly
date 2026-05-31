@@ -6,6 +6,7 @@
     "module": "esnext",
     "types": ["vite/client"],
     "skipLibCheck": true,
+    "resolveJsonModule": true,
 
     /* Bundler mode */
     "moduleResolution": "bundler",
@@ -14,6 +15,12 @@
     "moduleDetection": "force",
     "noEmit": true,
     "jsx": "react-jsx",
+
+    /* Shared contracts at repo-root types/ (see docs/ARCHITECTURE.md §4) */
+    "paths": {
+      "@shared": ["../types/index.ts"],
+      "@shared/*": ["../types/*"]
+    },
 
     /* Linting */
     "noUnusedLocals": true,

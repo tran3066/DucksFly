@@ -177,9 +177,9 @@ A "material" describes how a surface looks: its color and how it responds to lig
 
 ### The duck specifically
 
-The rigged mallard at [frontend/public/models/duck/](../frontend/public/models/duck/) is
-already set up to these rules in its loader,
-[loadDuck.ts](../frontend/public/models/duck/loadDuck.ts):
+The rigged mallard's assets are at
+[frontend/public/models/duck/](../frontend/public/models/duck/); its loader,
+[loadDuck.ts](../frontend/src/world/loadDuck.ts), is already set up to these rules:
 
 - Its texture is a 32-by-32-pixel color image (`mallard-male.png` or
   `mallard-female.png`). Importantly, the texture is not stored inside the model file; the
@@ -197,7 +197,7 @@ renders white because its texture lives in a separate file. See the model's
 ## 5. The Duck: Animation Design
 
 The duck carries 22 animation clips packed into a single timeline, which the loader
-slices apart using [animations.json](../frontend/public/models/duck/animations.json). Map
+slices apart using [animations.json](../frontend/src/world/animations.json). Map
 them to flight states like this:
 
 ```mermaid

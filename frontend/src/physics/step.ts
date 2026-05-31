@@ -40,16 +40,21 @@ export function step(
   const _lean = ease(state._lean, leanTarget, cfg.smoothingTau, dt);
   const _dive = ease(state._dive, diveTarget, cfg.smoothingTau, dt);
 
-  // 2. Vertical: flap lifts, lack of flap lets gravity win.
-  let verticalVel = _flap * cfg.climbGain - cfg.gravity * (1 - _flap);
-  if (actions.flapImpulse) verticalVel += cfg.flapKick;
+  // 2. Vertical: INTEGRATE velocity so it has inertia (no instantaneous snap).
+  //    flap thrust fights gravity; vertical drag bounds it to a terminal rate and
+  //    turns flap impulses into smooth arcs instead of a sawtooth.
+  let verticalVel = state.verticalVel;
+  verticalVel += (_flap * cfg.climbThrust - cfg.gravity) * dt;
+  if (actions.flapImpulse) verticalVel += cfg.flapKick; // one-shot (binary-flap model)
 
-  // 3. Dive: convert altitude into forward speed, plus extra sink.
+  // 3. Dive: convert altitude into forward speed, plus extra downward accel.
   let speed = state.speed + _dive * cfg.diveAccel * dt;
-  verticalVel -= _dive * cfg.diveSink;
+  verticalVel -= _dive * cfg.diveSink * dt;
 
-  // 4. Drag: forward momentum decays toward the glide floor.
+  // 4. Drag: forward momentum decays toward the glide floor; vertical air drag
+  //    gives terminal climb/sink and smooths the vertical response.
   speed -= cfg.drag * speed * dt;
+  verticalVel -= cfg.vertDrag * verticalVel * dt;
 
   // 5. Turn: lean<0 = left = yaw increases. Gentle speed bleed on sharp turns.
   const turnRate = -_lean * cfg.maxTurnRate;

@@ -1,15 +1,20 @@
+import { DuckPreview } from './world/DuckPreview'
 import { PhysicsSandbox } from './test/PhysicsSandbox'
+import { MultiplayerTest } from './test/MultiplayerTest'
 import { PersonAPlayground } from './debug/PersonAPlayground'
 
-// Test-harness switcher (dev only). Both harnesses coexist so Person A and
-// Person C never fight over App.tsx:
-//   default  -> Person C physics sandbox (placeholder duck)
-//   ?mode=a  -> Person A playground (real animated duck + follow cam)
+// Temporary view switch so each person's harness coexists. Pick via URL:
+//   ?view=map          -> environment / map generation sandbox (Person B)
+//   ?view=multiplayer  -> server sync test harness (open in several tabs)
+//   ?view=playground   -> Person A playground (real animated duck + follow cam)
+//   (default)          -> duck preview (Person A)
 // The real game shell replaces all of this later.
 function App() {
-  const mode = new URLSearchParams(window.location.search).get('mode')
-  if (mode === 'a') return <PersonAPlayground />
-  return <PhysicsSandbox />
+  const view = new URLSearchParams(window.location.search).get('view')
+  if (view === 'map') return <PhysicsSandbox />
+  if (view === 'multiplayer') return <MultiplayerTest />
+  if (view === 'playground') return <PersonAPlayground />
+  return <DuckPreview />
 }
 
 export default App
