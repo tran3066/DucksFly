@@ -14,7 +14,8 @@ import {
 import { buildMap, ringCrossing, DEFAULT_MAP_CONFIG, type MapDef } from '../map';
 import { DuckMesh } from './DuckMesh';
 import { MapView } from './MapView';
-import { raceConnection, SERVER_URL } from '../net/connection';
+import { raceConnection } from '../net/connection';
+import { getServerUrl } from '../net/serverConfig';
 import { useRace, isHost } from '../net/useRace';
 import type { PlayerView, RaceSnapshot } from '../net/types';
 import type { DuckVariant } from '@shared/network';
@@ -400,7 +401,7 @@ function Lobby({ race, self }: { race: RaceSnapshot; self?: PlayerView }) {
       <div style={panelStyle}>
         <h1 style={{ fontSize: '1.3rem', margin: '0 0 4px' }}>🦆 DucksFly · Race</h1>
         <p className="tip" style={{ margin: '0 0 16px' }}>
-          server <code>{SERVER_URL}</code> · status{' '}
+          server <code>{getServerUrl()}</code> · status{' '}
           <b className={`st-${race.status}`}>{race.status}</b>
         </p>
 
