@@ -33,7 +33,7 @@ import { getBaseline, useCalibrationStore } from '../input/calibration'
 import { diveFromArmsDown, type FlapStrategy } from '../input/gestures/flap'
 import { computeLean, type LeanCalib } from '../input/gestures/lean'
 import { detectSixSeven, makeSixSevenState } from '../input/gestures/sixSeven'
-import { playSixSeven, isSixSevenPlaying, playQuack } from './sfx'
+import { playSixSeven, isSixSevenPlaying, playQuack, playRingPass, playRingHit } from './sfx'
 import type { LandmarkFrame } from '../input/fixtures/landmarks'
 import {
   GESTURE_TURN,
@@ -307,6 +307,7 @@ export function FlightRig({
             boostRef.current = Math.max(boostRef.current, boostSpeedRef.current)
             ringsChanged = true
             onRingPassed?.(ring.id)
+            playRingPass() // bright "collect" chime on a clean fly-through
           }
         }
 
@@ -324,6 +325,7 @@ export function FlightRig({
             if (passedRingsRef.current.has(ring.id)) continue
             if (ringRimHit(prevZ, s2.position[2], s2.position[0], s2.position[1], ring, duckRadius)) {
               crashed = true
+              playRingHit() // soft bounce: clipped the rim instead of the hole
             }
           }
 

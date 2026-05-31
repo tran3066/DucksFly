@@ -24,6 +24,7 @@ import { FLAP_ANIM_SPEED } from './gestureConfig'
 import { FlightScene } from './FlightScene'
 import type { FlightRigProps } from './FlightRig'
 import { CrashFlash } from './CrashFlash'
+import { startMusic, stopMusic, playFinish } from './sfx'
 import { RemoteDucks } from './RemoteDuck'
 import { ControlModeToggle, type ControlMode } from './ModeChooser'
 import { useCalibrationStore } from '../input/calibration'
@@ -117,6 +118,21 @@ export function MultiplayerGame({
   // We've crossed the line if either our local detection fired or the server has echoed it.
   const finished = localFinished || (self?.finished ?? false)
 
+  // Race music: loop through the countdown and the run. Keyed on the PHASE only (not
+  // the derived `finished` flag): crossing the line stops the loop explicitly in
+  // onFinish, and the phase-only key means this effect won't fight to restart it, while
+  // the next race starts it fresh on the countdown. (Reading `finished` here would
+  // stop/restart the loop at the countdown->racing edge for a returning finisher, whose
+  // localFinished is still stale-true until the racing-entry reset effect clears it.)
+  // The startMusic guard makes it idempotent against the ~20Hz re-renders; the unmount
+  // effect stops it so it never leaks into the menu.
+  const musicShouldPlay = race.phase === 'countdown' || race.phase === 'racing'
+  useEffect(() => {
+    if (musicShouldPlay) startMusic()
+    else stopMusic()
+  }, [musicShouldPlay])
+  useEffect(() => () => stopMusic(), [])
+
   // Latest players/sessionId, read at (re)spawn. Kept in refs so the spawn-reset effect does
   // NOT depend on `race.players` (a fresh array each ~20Hz snapshot).
   const playersRef = useRef(race.players)
@@ -178,6 +194,8 @@ export function MultiplayerGame({
   const onFinish = useRef(() => {
     finishedStreamRef.current = true
     setLocalFinished(true)
+    stopMusic() // your race is over: stop the loop at the finish line
+    playFinish() // ...and celebrate the crossing
   }).current
 
   const startCam: [number, number, number] = [

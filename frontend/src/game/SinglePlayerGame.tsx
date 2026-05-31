@@ -21,6 +21,7 @@ import { FlightScene } from './FlightScene'
 import type { FlightRigProps } from './FlightRig'
 import { CrashFlash } from './CrashFlash'
 import { SixSevenOverlay } from './SixSevenOverlay'
+import { startMusic, stopMusic, playFinish } from './sfx'
 import { ControlModeToggle, type ControlMode } from './ModeChooser'
 import { useCalibrationStore } from '../input/calibration'
 import { Overlay, Panel, Button, KeyCap, formatTime, COLORS, FONT, MONO, UI_KEYFRAMES } from './ui'
@@ -38,6 +39,13 @@ export function SinglePlayerGame({
   // Single-player: recalibrating is always fine (it just freezes this one duck).
   useEffect(() => {
     useCalibrationStore.getState().setRecalibrateAllowed(true)
+  }, [])
+  // Race music: single-player flies from mount, so start the loop here and stop it
+  // when leaving. The finish stops it (onFinish) and "Fly again" restarts it
+  // (resetState).
+  useEffect(() => {
+    startMusic()
+    return () => stopMusic()
   }, [])
   const stateRef = useRef<DuckState>(createFlightState())
   const actionsRef = useRef<DuckActions>({ ...makeIdleActions(), confidence: 1 }) // slider baseline
@@ -73,6 +81,8 @@ export function SinglePlayerGame({
       distance: stateRef.current.distance,
     })
     setFinished(true)
+    stopMusic() // race over: stop the loop at the finish line
+    playFinish() // ...and celebrate the crossing
   }, [])
   const [crashAt, setCrashAt] = useState(0)
   const onCrash = useCallback(() => setCrashAt(performance.now()), [])
@@ -95,6 +105,7 @@ export function SinglePlayerGame({
     setFinishStats(null)
     setPassedRingIds(new Set())
     setRingPulseAt(new Map())
+    startMusic() // (re)start the loop for the fresh run / new seed
   }, [])
 
   const keyRef = useKeyboardControls(true, fireImpulse)
