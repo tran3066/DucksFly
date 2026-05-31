@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
+import { useTexture } from '@react-three/drei'
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import { loadDuck, type LoadedDuck } from './loadDuck'
 import { Bush, Flowers, Grass, Mushroom, Rock, Tree } from './NatureProp'
@@ -68,78 +69,47 @@ export function StageEnd({ map }: { map: MapDef }) {
   )
 }
 
-const WATER_RINGS = 6
-const WATER_SEGMENTS = 30
-const WATER_PALETTE = ['#3f93c4', '#54a6d2', '#74bfe0'] // a few flat blues
-
-/** Gentle, deterministic surface bumps so the flat-shaded facets catch light differently. */
-function waterWave(x: number, z: number): number {
-  return 0.32 * Math.sin(x * 0.12 + z * 0.05) + 0.18 * Math.sin(z * 0.15 - x * 0.04 + 1.4)
-}
+const WATER_TEXTURE =
+  '/models/vector-seamless-rippled-swimming-pool-abstract-illustration-horizontally-vertically-repeatable_8130-2107.avif'
+const WATER_TILE = 70 // world units per texture repeat
 
 /**
- * Low-poly faceted water surface: a triangulated disc (clipped to the pond's
- * wobbly outline) with slight per-vertex height bumps and one flat blue per
- * triangle. Flat shading + the bumps give the classic stylized water look — no
- * texture. Built once per pond radius (non-indexed so each facet is its own).
+ * Water surface: the pond's irregular outline as a flat plane, mapped with the
+ * seamless rippled-water texture (tiled + slowly scrolling for motion).
+ * ShapeGeometry UVs are raw shape coords, so repeat = 1/tileSize sets density.
  */
-function buildWaterGeometry(baseR: number): THREE.BufferGeometry {
-  const positions: number[] = []
-  const colors: number[] = []
-  const palette = WATER_PALETTE.map((c) => new THREE.Color(c))
-
-  const vert = (ring: number, seg: number): [number, number, number] => {
-    const a = (seg / WATER_SEGMENTS) * Math.PI * 2
-    const r = pondRadiusAt(a, baseR) * (ring / WATER_RINGS)
-    const x = Math.cos(a) * r
-    const z = Math.sin(a) * r
-    return [x, waterWave(x, z), z]
-  }
-
-  let face = 0
-  const pushTri = (p0: number[], p1: number[], p2: number[]) => {
-    positions.push(...p0, ...p1, ...p2)
-    // Deterministic pseudo-random flat color per triangle.
-    const h = Math.abs(Math.sin(face * 12.9898) * 43758.5453) % 1
-    const c = palette[Math.floor(h * palette.length)]
-    for (let k = 0; k < 3; k++) colors.push(c.r, c.g, c.b)
-    face++
-  }
-
-  const center = [0, waterWave(0, 0), 0]
-  for (let s = 0; s < WATER_SEGMENTS; s++) {
-    pushTri(center, vert(1, s), vert(1, s + 1)) // inner fan
-    for (let ring = 1; ring < WATER_RINGS; ring++) {
-      const a0 = vert(ring, s)
-      const a1 = vert(ring, s + 1)
-      const b0 = vert(ring + 1, s)
-      const b1 = vert(ring + 1, s + 1)
-      pushTri(a0, b0, b1)
-      pushTri(a0, b1, a1)
-    }
-  }
-
-  const geo = new THREE.BufferGeometry()
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
-  geo.computeVertexNormals()
-  return geo
-}
-
-/** Translucent low-poly water surface. */
 function WaterSurface({ pond, y }: { pond: Pond; y: number }) {
-  const geometry = useMemo(() => buildWaterGeometry(pond.r), [pond.r])
+  const texture = useTexture(WATER_TEXTURE)
+
+  const geometry = useMemo(() => {
+    const shape = new THREE.Shape()
+    const segments = 96
+    for (let i = 0; i <= segments; i++) {
+      const a = (i / segments) * Math.PI * 2
+      const r = pondRadiusAt(a, pond.r)
+      const x = Math.cos(a) * r
+      const yy = Math.sin(a) * r
+      if (i === 0) shape.moveTo(x, yy)
+      else shape.lineTo(x, yy)
+    }
+    return new THREE.ShapeGeometry(shape)
+  }, [pond.r])
+
+  useMemo(() => {
+    texture.wrapS = THREE.RepeatWrapping
+    texture.wrapT = THREE.RepeatWrapping
+    texture.colorSpace = THREE.SRGBColorSpace
+    texture.repeat.set(1 / WATER_TILE, 1 / WATER_TILE)
+  }, [texture])
+
+  useFrame((_, dt) => {
+    texture.offset.x += dt * 0.01
+    texture.offset.y += dt * 0.006
+  })
+
   return (
-    <mesh geometry={geometry} position={[pond.x, y, pond.z]} receiveShadow>
-      <meshStandardMaterial
-        vertexColors
-        flatShading
-        side={THREE.DoubleSide}
-        transparent
-        opacity={0.94}
-        roughness={0.55}
-        metalness={0.1}
-      />
+    <mesh geometry={geometry} position={[pond.x, y, pond.z]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      <meshStandardMaterial map={texture} transparent opacity={0.92} roughness={0.3} metalness={0.15} />
     </mesh>
   )
 }
