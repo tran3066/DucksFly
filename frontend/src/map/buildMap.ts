@@ -51,11 +51,11 @@ interface DetailSpec {
 }
 
 const DETAIL_SCATTER: DetailSpec[] = [
-  { kind: 'bush', variants: 3, per100m: 3, minH: 2, maxH: 4, salt: 0x3 },
+  { kind: 'bush', variants: 3, per100m: 12, minH: 2, maxH: 4, salt: 0x3 },
   { kind: 'rock', variants: 5, per100m: 2, minH: 1, maxH: 3, salt: 0x4 },
-  { kind: 'grass', variants: 2, per100m: 6, minH: 0.6, maxH: 1.2, salt: 0x5 },
-  { kind: 'flowers', variants: 2, per100m: 4, minH: 0.6, maxH: 1.0, salt: 0x6 },
-  { kind: 'mushroom', variants: 2, per100m: 1, minH: 0.4, maxH: 0.8, salt: 0x7 },
+  { kind: 'grass', variants: 2, per100m: 40, minH: 0.6, maxH: 1.2, salt: 0x5 },
+  { kind: 'flowers', variants: 2, per100m: 30, minH: 0.6, maxH: 1.0, salt: 0x6 },
+  { kind: 'mushroom', variants: 2, per100m: 10, minH: 0.4, maxH: 0.8, salt: 0x7 },
   { kind: 'stump', variants: 1, per100m: 0.5, minH: 1.2, maxH: 2.0, salt: 0x8 },
   { kind: 'branch', variants: 1, per100m: 0.6, minH: 0.5, maxH: 0.9, salt: 0x9 },
 ];
