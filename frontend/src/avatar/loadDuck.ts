@@ -1,10 +1,10 @@
 // Src-side duck loader. (Person A)
 //
-// Adapted from frontend/public/models/duck/loadDuck.ts, with one change: the
-// animation split is FETCHED from /models/duck/animations.json at runtime rather
-// than imported, because Vite does not support importing modules/JSON out of the
-// public/ directory. The FBX and PNGs are served from public/ at the site root,
-// so their absolute URLs below resolve correctly in dev and in a build.
+// Adapted from the original public/models/duck/loadDuck.ts. The animation split
+// (animations.json) is IMPORTED from src/world/, the team's single source for it
+// after the teammate moved it out of public/ during the duck refactor. The FBX
+// and PNGs are still served from public/ at the site root, so their absolute URLs
+// below resolve correctly in dev and in a build.
 //
 // Why a custom loader at all: the FBX ships ONE long take and its textures are
 // NOT embedded. This applies the variant PNG and re-slices the single take into
@@ -12,10 +12,10 @@
 
 import * as THREE from 'three'
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js'
+import animData from '../world/animations.json'
 
 const BASE = '/models/duck'
 const FBX_URL = `${BASE}/mallard-duck.fbx`
-const ANIM_URL = `${BASE}/animations.json`
 const TEX = {
   male: `${BASE}/mallard-male.png`,
   female: `${BASE}/mallard-female.png`,
@@ -75,13 +75,8 @@ function loadTexture(variant: DuckVariant): THREE.Texture {
  *   // each frame: duck.update(delta)
  */
 export async function loadDuck(variant: DuckVariant = 'male'): Promise<LoadedDuck> {
-  const [fbx, anim] = await Promise.all([
-    new FBXLoader().loadAsync(FBX_URL),
-    fetch(ANIM_URL).then((r) => {
-      if (!r.ok) throw new Error(`Failed to load ${ANIM_URL}: HTTP ${r.status}`)
-      return r.json() as Promise<AnimData>
-    }),
-  ])
+  const fbx = await new FBXLoader().loadAsync(FBX_URL)
+  const anim = animData as AnimData
 
   const texture = loadTexture(variant)
   fbx.traverse((child) => {
