@@ -28,6 +28,8 @@ import { FollowCamera } from '../avatar/FollowCamera'
 import { DEFAULT_FOLLOW } from '../avatar/followConfig'
 import { DEFAULT_ANIM_MAP, type AnimMapConfig } from '../avatar/animationMap'
 import { MAX_FRAME_DT, BOOST, BOOST_SLIDERS } from './playgroundConfig'
+import { WebcamPanel } from './WebcamPanel'
+import type { Baseline } from '../input/calibration'
 
 /** Runs the fixed-timestep flight model and positions the duck from the result. */
 function PlaygroundRig({
@@ -323,6 +325,15 @@ export function PersonAPlayground() {
     setRingPulseAt(new Map())
   }, [])
 
+  // Calibration baseline captured by the WebcamPanel gate at the start of the
+  // session. Held for the gesture steps (04+) that will normalize wrist lift and
+  // lean against it; for now we just stash and log it so calibration is verifiable.
+  const baselineRef = useRef<Baseline | null>(null)
+  const handleCalibrated = useCallback((b: Baseline) => {
+    baselineRef.current = b
+    console.info('[calibration] baseline captured:', b)
+  }, [])
+
   // Keyboard (Space = flap, A/D = lean, W = dive). Always on in the playground.
   const keyRef = useKeyboardControls(true, fireImpulse)
 
@@ -509,6 +520,9 @@ export function PersonAPlayground() {
       <ControlsHint />
       <DebugToggle debug={debug} onToggle={() => setDebug((d) => !d)} />
       {finished && <FinishOverlay stateRef={stateRef} onReset={resetState} />}
+      {/* Webcam feed (bottom-left) + landmark overlay, plus the start-of-session
+          calibration gate. Owns the entire MediaPipe pipeline; mount it once. */}
+      <WebcamPanel onCalibrated={handleCalibrated} />
     </div>
   )
 }

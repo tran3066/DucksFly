@@ -60,3 +60,80 @@ export function liftWrists(frame: LandmarkFrame, amount: number): LandmarkFrame 
   next[16].y -= amount
   return next
 }
+
+// ---------------------------------------------------------------------------
+// Calibration fixtures (plan Step 03.1 and 03.2). These build clean rest poses
+// for the rest-pose-capture and baseline tests. They return full 33-landmark
+// frames so they are structurally assignable to calibration's Frame type (which
+// only reads { x, y, visibility }; the extra z is harmless).
+// ---------------------------------------------------------------------------
+
+// The landmarks calibration's visibility gate cares about: shoulders (11,12),
+// elbows (13,14), wrists (15,16), hips (23,24). Kept local so the fixtures and
+// the production TRACKED list can drift independently if a test needs it.
+const CALIB_TRACKED = [11, 12, 13, 14, 15, 16, 23, 24]
+
+/**
+ * A clean rest / T-pose: every one of the 33 landmarks is present and fully
+ * visible (visibility 1.0). Shoulders sit level at y=0.40 (left x=0.40, right
+ * x=0.60), the wrists reach out to the sides near shoulder height for a T-pose,
+ * and the hips sit below. Tests shift individual coords as needed; the absolute
+ * numbers only need to be plausible and shiftable.
+ */
+export function makeRestFrame(): LandmarkFrame {
+  // Pin the gameplay-relevant joints to a level, symmetric T-pose. Everything
+  // else falls back to a visible filler so no math ever hits a missing index.
+  const pinned: Partial<Record<number, Landmark>> = {
+    0: { x: 0.5, y: 0.2, z: 0, visibility: 1.0 }, // nose
+    11: { x: 0.4, y: 0.4, z: 0, visibility: 1.0 }, // left shoulder
+    12: { x: 0.6, y: 0.4, z: 0, visibility: 1.0 }, // right shoulder
+    13: { x: 0.25, y: 0.4, z: 0, visibility: 1.0 }, // left elbow (arm out to side)
+    14: { x: 0.75, y: 0.4, z: 0, visibility: 1.0 }, // right elbow
+    15: { x: 0.1, y: 0.4, z: 0, visibility: 1.0 }, // left wrist (T-pose, shoulder height)
+    16: { x: 0.9, y: 0.4, z: 0, visibility: 1.0 }, // right wrist
+    23: { x: 0.45, y: 0.7, z: 0, visibility: 1.0 }, // left hip (below shoulders)
+    24: { x: 0.55, y: 0.7, z: 0, visibility: 1.0 }, // right hip
+  }
+  const frame: LandmarkFrame = []
+  for (let i = 0; i < 33; i++) {
+    frame.push(pinned[i] ?? { x: 0.5, y: 0.5, z: 0, visibility: 1.0 })
+  }
+  // Fresh objects so a test mutating one landmark cannot poison another frame.
+  return frame.map((lm) => ({ ...lm }))
+}
+
+/**
+ * Same geometry as makeRestFrame, but the tracked landmarks (shoulders, elbows,
+ * wrists, hips) are dropped to visibility ~0.1, well below the 0.5 gate. This is
+ * the junk frame the averager must reject.
+ */
+export function makeLowVisFrame(): LandmarkFrame {
+  const frame = makeRestFrame()
+  for (const i of CALIB_TRACKED) {
+    frame[i] = { ...frame[i], visibility: 0.1 }
+  }
+  return frame
+}
+
+/**
+ * Scale every landmark toward the centroid of the tracked landmarks by factor
+ * k. k<1 shrinks the pose (simulating the player standing farther from the
+ * camera); k=1 is a no-op. Visibility is preserved. Used by the scale-invariance
+ * adversarial test in 03.2 to prove baselines normalize body size away.
+ */
+export function scalePose(pose: LandmarkFrame, k: number): LandmarkFrame {
+  // Centroid of the tracked landmarks only, so scaling pivots around the torso.
+  let cx = 0
+  let cy = 0
+  for (const i of CALIB_TRACKED) {
+    cx += pose[i].x
+    cy += pose[i].y
+  }
+  cx /= CALIB_TRACKED.length
+  cy /= CALIB_TRACKED.length
+  return pose.map((lm) => ({
+    ...lm,
+    x: cx + (lm.x - cx) * k,
+    y: cy + (lm.y - cy) * k,
+  }))
+}

@@ -1,0 +1,571 @@
+// Webcam debug panel + calibration gate. (Person A, plan Step 01.x -> 03.x glue)
+//
+// This is the ONE place the whole input pipeline is wired together exactly once:
+// a single useWebcam (the camera-permission state machine), a single
+// PoseLandmarker (the MediaPipe model), and a single pose loop (the per-frame
+// rAF detect). Everything downstream -- the DebugOverlay dots and the
+// calibration collector -- reads the landmarks the loop pushes into the shared
+// Zustand store, so this component stays the only writer.
+//
+// It renders two surfaces:
+//   1. a bottom-left "feed box" that is always visible once mounted: the mirrored
+//      webcam video with the landmark overlay stacked on top, both flipped
+//      together so the selfie mirror and the dots stay aligned.
+//   2. a centered full-screen calibration gate that blocks until the player has
+//      enabled the camera and captured a rest pose. Once calibrated it dismisses
+//      and hands the computed Baseline back to the parent.
+//
+// Ref discipline: refs are only read/written inside effects and event handlers,
+// never during render (this repo lints react-hooks rules strictly). Teardown
+// stops the loop, closes the landmarker, and the controller stops the stream
+// tracks, so nothing leaks on unmount.
+
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useWebcam, attachStream, detachStream } from '../input/webcam'
+import { createPoseLandmarker } from '../input/pose/poseLandmarker'
+import { startPoseLoop } from '../input/pose/loop'
+import { captureRestPose, computeBaseline } from '../input/calibration'
+import { useInputStore } from '../input/store'
+import { DebugOverlay } from './DebugOverlay'
+import type { PoseLandmarker } from '@mediapipe/tasks-vision'
+import type { Baseline } from '../input/calibration'
+
+// Default feed-box width in px when the parent does not pass panelSize. The box
+// is a 4:3 rectangle, so the height derives from this width.
+const DEFAULT_PANEL_SIZE = 260
+
+// Aspect ratio of the feed box (and the video inside it). Kept as numerator /
+// denominator so the height calc and the CSS aspectRatio string agree.
+const PANEL_ASPECT_W = 4
+const PANEL_ASPECT_H = 3
+
+// How long the visible "hold still" countdown runs before the capture starts, in
+// whole seconds. The capture itself then samples for CAPTURE_MS.
+const COUNTDOWN_SECONDS = 3
+
+// How long captureRestPose samples the live pose loop, in ms. 2500ms (~2.5s of
+// frames) is enough to average out per-frame jitter without making the player
+// hold still uncomfortably long.
+const CAPTURE_MS = 2500
+
+// The phases the calibration gate moves through. 'idle' is the resting state
+// (showing either "enable camera" or "ready to calibrate"); 'countdown' shows the
+// 3..2..1 timer; 'capturing' is the actual sampling window; 'failed' means the
+// capture saw no usable frames and the player should reframe and retry.
+type GatePhase = 'idle' | 'countdown' | 'capturing' | 'failed'
+
+export interface WebcamPanelProps {
+  // Called once with the computed Baseline when calibration succeeds. Optional so
+  // the panel can be mounted purely to preview the feed without a consumer.
+  onCalibrated?: (baseline: Baseline) => void
+  // Feed-box width in px; defaults to DEFAULT_PANEL_SIZE.
+  panelSize?: number
+}
+
+/**
+ * Owns the entire webcam + pose pipeline exactly once and renders the feed box
+ * plus the calibration gate. Mount this a single time near the app root.
+ */
+export function WebcamPanel({ onCalibrated, panelSize }: WebcamPanelProps): React.JSX.Element {
+  // --- Webcam state machine (Step 01). start() is the user-gesture entry point
+  //     for getUserMedia; stop() is handled by the hook's controller on unmount
+  //     via track teardown, but we also detach the video below. ---
+  const { status, stream, error, start } = useWebcam()
+
+  // The <video> the stream is attached to and the loop reads frames from. Touched
+  // only in effects/handlers, never during render.
+  const videoRef = useRef<HTMLVideoElement>(null)
+
+  // The loaded PoseLandmarker, or null until createPoseLandmarker resolves. Held
+  // in a ref (not state) because the loop reads it imperatively and we do not want
+  // a re-render when it lands; modelReady (below) is the render-visible signal.
+  const landmarkerRef = useRef<PoseLandmarker | null>(null)
+
+  // The stop() returned by startPoseLoop, or null when the loop is not running.
+  // Kept in a ref so the start-once effect and the unmount cleanup share it.
+  const loopStopRef = useRef<(() => void) | null>(null)
+
+  // Guard so the loop is created exactly once even if the start-once effect runs
+  // again (StrictMode double-invoke, dependency changes). The ref above can be
+  // nulled by cleanup, so we track "did we ever start" separately is unnecessary;
+  // instead we simply check loopStopRef before starting.
+
+  // Render-visible flags. modelReady flips true when the landmarker finishes
+  // loading; videoReady flips true once the <video> actually has pixels (real
+  // dimensions), which is when the loop is safe to start.
+  const [modelReady, setModelReady] = useState(false)
+  const [videoReady, setVideoReady] = useState(false)
+
+  // A friendly message if the MediaPipe model fails to load. Shown in the feed box
+  // and (if it happens) folded into the gate copy so a dead model is loud, not
+  // silent.
+  const [modelError, setModelError] = useState<string | null>(null)
+
+  // Calibration gate state. `calibrated` dismisses the gate for good; `phase`
+  // drives the in-gate UI; `countdown` is the visible 3..2..1 number.
+  const [calibrated, setCalibrated] = useState(false)
+  const [phase, setPhase] = useState<GatePhase>('idle')
+  const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS)
+
+  // Measured feed-box pixel size, fed to DebugOverlay so the canvas matches the
+  // rendered video box exactly. Derived from panelSize + the 4:3 ratio as the
+  // initial guess, then corrected by a ResizeObserver once the box is laid out.
+  const boxWidth = panelSize ?? DEFAULT_PANEL_SIZE
+  const boxHeight = Math.round((boxWidth * PANEL_ASPECT_H) / PANEL_ASPECT_W)
+  const [overlaySize, setOverlaySize] = useState<{ w: number; h: number }>({
+    w: boxWidth,
+    h: boxHeight,
+  })
+
+  // The outer feed box, observed for its real pixel size so the overlay canvas
+  // tracks any rounding the browser applies to the aspect-ratio layout.
+  const boxRef = useRef<HTMLDivElement>(null)
+
+  const isReady = status === 'ready'
+
+  // --- Effect: load the PoseLandmarker once on mount, close it on unmount. ---
+  useEffect(() => {
+    let cancelled = false
+    createPoseLandmarker()
+      .then((lm) => {
+        // If the component unmounted before the model resolved, close it
+        // immediately so the GPU resources do not leak.
+        if (cancelled) {
+          lm.close()
+          return
+        }
+        landmarkerRef.current = lm
+        setModelReady(true)
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        const message = err instanceof Error ? err.message : String(err)
+        setModelError(message)
+      })
+
+    return () => {
+      cancelled = true
+      // Stop any running loop before closing the model so no in-flight detect
+      // touches a closed landmarker.
+      if (loopStopRef.current) {
+        loopStopRef.current()
+        loopStopRef.current = null
+      }
+      if (landmarkerRef.current) {
+        landmarkerRef.current.close()
+        landmarkerRef.current = null
+      }
+    }
+  }, [])
+
+  // --- Effect: attach the stream to the <video> when the camera is ready, and
+  //     detach on cleanup. ---
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    if (!isReady || !stream) return
+
+    // attachStream sets srcObject and calls play(); it never rejects.
+    void attachStream(video, stream)
+
+    return () => {
+      detachStream(video)
+    }
+  }, [isReady, stream])
+
+  // --- Effect: mark the video "ready" once it has real pixels. We listen for
+  //     loadeddata/playing rather than trusting status, because the loop needs the
+  //     element to have actual dimensions before detectForVideo will work. ---
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+
+    const markReady = () => setVideoReady(true)
+
+    // If the element already has data (e.g. fast attach), flip immediately.
+    if (video.readyState >= 2 && video.videoWidth > 0) {
+      setVideoReady(true)
+    }
+
+    video.addEventListener('loadeddata', markReady)
+    video.addEventListener('playing', markReady)
+
+    return () => {
+      video.removeEventListener('loadeddata', markReady)
+      video.removeEventListener('playing', markReady)
+      // When the stream goes away (camera stopped/lost), the video no longer has
+      // pixels, so reset so a later re-enable re-arms the loop start.
+      setVideoReady(false)
+    }
+  }, [isReady, stream])
+
+  // --- Effect: start the pose loop exactly once, when BOTH the model is ready and
+  //     the video has real pixels. Guarded by loopStopRef so a re-run never starts
+  //     a second loop. ---
+  useEffect(() => {
+    const video = videoRef.current
+    const landmarker = landmarkerRef.current
+    if (!modelReady || !videoReady || !landmarker || !video) return
+    // Already running: do not start a second loop.
+    if (loopStopRef.current) return
+
+    loopStopRef.current = startPoseLoop({
+      landmarker,
+      video,
+      onLandmarks: (raw) =>
+        useInputStore.getState().setLandmarks(
+          // Normalize MediaPipe's landmark shape into the store's LandmarkFrame:
+          // z and visibility are optional off the model, so we fill safe defaults
+          // (z 0, visibility 1) to keep the downstream types total.
+          raw.map((p) => ({
+            x: p.x,
+            y: p.y,
+            z: p.z ?? 0,
+            visibility: p.visibility ?? 1,
+          })),
+        ),
+    })
+
+    // No cleanup here on purpose: the loop must survive re-renders and is torn
+    // down once in the model effect's unmount cleanup. Tearing it down here would
+    // stop/restart the loop on every dependency tick.
+  }, [modelReady, videoReady])
+
+  // --- Effect: keep the overlay canvas the same pixel size as the rendered feed
+  //     box, so the dots line up with the video. ResizeObserver corrects any
+  //     fractional layout the aspect-ratio CSS produces. ---
+  useEffect(() => {
+    const box = boxRef.current
+    if (!box || typeof ResizeObserver === 'undefined') return
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect
+        if (width > 0 && height > 0) {
+          setOverlaySize({ w: Math.round(width), h: Math.round(height) })
+        }
+      }
+    })
+    observer.observe(box)
+
+    return () => observer.disconnect()
+  }, [])
+
+  // --- Calibration handler: run a visible countdown, then sample the live pose
+  //     loop and reduce it to a Baseline. ---
+  const runCalibration = useCallback(async () => {
+    // Visible 3..2..1 countdown so the player has time to settle into rest pose.
+    setPhase('countdown')
+    for (let n = COUNTDOWN_SECONDS; n >= 1; n--) {
+      setCountdown(n)
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+    }
+
+    // Sample the live store for CAPTURE_MS, then average + reduce.
+    setPhase('capturing')
+    const result = await captureRestPose(() => useInputStore.getState().landmarks, CAPTURE_MS)
+
+    if (!result.ok) {
+      // No usable frames: the player was out of frame or too dim. Let them retry.
+      setPhase('failed')
+      return
+    }
+
+    const baseline = computeBaseline(result.pose)
+    onCalibrated?.(baseline)
+    setCalibrated(true)
+    setPhase('idle')
+  }, [onCalibrated])
+
+  // The friendly status text for the chip and the gate. modelError takes priority
+  // because a dead model means no dots will ever appear.
+  const statusLabel = modelError
+    ? 'model failed'
+    : status === 'idle'
+      ? 'camera off'
+      : status === 'requesting'
+        ? 'requesting...'
+        : status === 'error'
+          ? 'camera error'
+          : !modelReady
+            ? 'loading model...'
+            : 'tracking'
+
+  // Whether the feed box should show its centered hint instead of relying on the
+  // (possibly black) video. True until we are genuinely ready to track.
+  const showFeedHint = !isReady || !!modelError
+
+  return (
+    <>
+      {/* ----- BOTTOM-LEFT FEED BOX (always visible once mounted) ----- */}
+      <div
+        ref={boxRef}
+        style={{
+          position: 'fixed',
+          left: 16,
+          bottom: 16,
+          width: boxWidth,
+          aspectRatio: `${PANEL_ASPECT_W} / ${PANEL_ASPECT_H}`,
+          borderRadius: 16,
+          overflow: 'hidden',
+          boxShadow: '0 8px 30px rgba(0,0,0,0.35)',
+          background: '#10161d',
+          zIndex: 40,
+        }}
+      >
+        {/* Mirror wrapper: flips BOTH the video and the overlay together so the
+            selfie view and the dots stay aligned. */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            transform: 'scaleX(-1)',
+          }}
+        >
+          <video
+            ref={videoRef}
+            muted
+            playsInline
+            autoPlay
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              display: 'block',
+            }}
+          />
+          <DebugOverlay width={overlaySize.w} height={overlaySize.h} />
+        </div>
+
+        {/* Status chip, top-left inside the box. Sits above the mirror wrapper
+            and is NOT mirrored, so the text reads normally. */}
+        <div
+          style={{
+            position: 'absolute',
+            top: 8,
+            left: 8,
+            padding: '3px 8px',
+            borderRadius: 999,
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: 0.2,
+            color: '#e7eef5',
+            background: 'rgba(8, 12, 17, 0.6)',
+            backdropFilter: 'blur(6px)',
+            pointerEvents: 'none',
+          }}
+        >
+          {statusLabel}
+        </div>
+
+        {/* Centered hint when we are not actually tracking yet (camera off /
+            requesting / error / model failed). */}
+        {showFeedHint && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              textAlign: 'center',
+              padding: 16,
+              fontSize: 12,
+              lineHeight: 1.4,
+              color: '#aebccb',
+              pointerEvents: 'none',
+            }}
+          >
+            {modelError
+              ? 'Model failed to load. Reload the page to retry.'
+              : status === 'idle'
+                ? 'Camera is off'
+                : status === 'requesting'
+                  ? 'Requesting camera...'
+                  : error}
+          </div>
+        )}
+      </div>
+
+      {/* ----- CALIBRATION GATE (centered overlay, until calibrated) ----- */}
+      {!calibrated && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(8, 12, 17, 0.45)',
+            backdropFilter: 'blur(2px)',
+            zIndex: 50,
+          }}
+        >
+          <div
+            style={{
+              width: 'min(440px, calc(100vw - 32px))',
+              padding: '28px 28px 24px',
+              borderRadius: 20,
+              background: 'rgba(16, 22, 29, 0.92)',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.45)',
+              color: '#e7eef5',
+              textAlign: 'center',
+            }}
+          >
+            <h2
+              style={{
+                margin: '0 0 12px',
+                fontSize: 22,
+                fontWeight: 700,
+                letterSpacing: 0.2,
+              }}
+            >
+              Calibrate
+            </h2>
+
+            {/* Instructions shown while idle (before a capture is running). */}
+            {phase === 'idle' && (
+              <p
+                style={{
+                  margin: '0 0 20px',
+                  fontSize: 14,
+                  lineHeight: 1.5,
+                  color: '#aebccb',
+                }}
+              >
+                Stand back so your head, shoulders and both hands are in view.
+                Stand naturally with your arms relaxed. Then press Calibrate and
+                hold still.
+              </p>
+            )}
+
+            {/* Countdown number while the timer runs. */}
+            {phase === 'countdown' && (
+              <div style={{ margin: '8px 0 20px' }}>
+                <div style={{ fontSize: 56, fontWeight: 800, lineHeight: 1 }}>
+                  {countdown}
+                </div>
+                <p style={{ margin: '12px 0 0', fontSize: 14, color: '#aebccb' }}>
+                  Get into your rest pose...
+                </p>
+              </div>
+            )}
+
+            {/* Capturing message while the sampler runs. */}
+            {phase === 'capturing' && (
+              <p
+                style={{
+                  margin: '8px 0 20px',
+                  fontSize: 15,
+                  fontWeight: 600,
+                  color: '#e7eef5',
+                }}
+              >
+                Hold still...
+              </p>
+            )}
+
+            {/* Failure message: no usable frames captured. */}
+            {phase === 'failed' && (
+              <p
+                style={{
+                  margin: '0 0 20px',
+                  fontSize: 14,
+                  lineHeight: 1.5,
+                  color: '#f3c0c0',
+                }}
+              >
+                We could not see you clearly. Make sure your shoulders and both
+                hands are in frame and well lit, then try again.
+              </p>
+            )}
+
+            {/* --- Action area. The button shown depends on camera status and
+                whether a capture is in flight. --- */}
+            {!isReady ? (
+              // Camera not running yet: the primary user-gesture button that
+              // calls start() (required for getUserMedia), plus error + retry.
+              <div>
+                {status === 'error' && (
+                  <p
+                    style={{
+                      margin: '0 0 16px',
+                      fontSize: 13,
+                      lineHeight: 1.5,
+                      color: '#f3c0c0',
+                    }}
+                  >
+                    {error}
+                  </p>
+                )}
+                {modelError && (
+                  <p
+                    style={{
+                      margin: '0 0 16px',
+                      fontSize: 13,
+                      lineHeight: 1.5,
+                      color: '#f3c0c0',
+                    }}
+                  >
+                    The pose model failed to load. Reload the page to retry.
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void start()}
+                  disabled={status === 'requesting'}
+                  style={primaryButtonStyle(status === 'requesting')}
+                >
+                  {status === 'error'
+                    ? 'Retry'
+                    : status === 'requesting'
+                      ? 'Requesting...'
+                      : 'Enable camera'}
+                </button>
+              </div>
+            ) : (
+              // Camera ready: the Calibrate button, disabled while a capture is
+              // already running so a double click cannot start two captures.
+              <button
+                type="button"
+                onClick={() => void runCalibration()}
+                disabled={phase === 'countdown' || phase === 'capturing' || !modelReady}
+                style={primaryButtonStyle(
+                  phase === 'countdown' || phase === 'capturing' || !modelReady,
+                )}
+              >
+                {phase === 'failed'
+                  ? 'Try again (hold still)'
+                  : !modelReady
+                    ? 'Loading model...'
+                    : 'Calibrate (hold still)'}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+/**
+ * Shared style for the gate's primary button. Disabled state dims it and removes
+ * the pointer cursor so the user can tell it is inert.
+ */
+function primaryButtonStyle(disabled: boolean): React.CSSProperties {
+  return {
+    appearance: 'none',
+    border: 'none',
+    borderRadius: 12,
+    padding: '12px 22px',
+    fontSize: 15,
+    fontWeight: 700,
+    letterSpacing: 0.2,
+    color: '#0b1015',
+    background: disabled ? '#6f8aa3' : '#7cc4ff',
+    cursor: disabled ? 'default' : 'pointer',
+    opacity: disabled ? 0.7 : 1,
+    boxShadow: disabled ? 'none' : '0 6px 18px rgba(124, 196, 255, 0.35)',
+    transition: 'background 120ms ease, opacity 120ms ease',
+  }
+}
