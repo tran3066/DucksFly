@@ -12,14 +12,16 @@
 // slider. Ref discipline: refs are only read/written in effects or useFrame,
 // never during render (react-hooks rules).
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { Leva, useControls, button, folder } from 'leva'
 import { Group } from 'three'
 import type { DuckActions, DuckState } from '../physics'
 import { makeIdleActions } from '../shared/types/duckActions'
 import { useKeyboardControls, type KeyActions } from '../input/keyboard'
-import { DebugArena } from './DebugArena'
+import { buildMap, DEFAULT_MAP_CONFIG, type MapDef } from '../map'
+import { MapView } from '../test/MapView'
+import { SimpleSky } from '../world/SimpleSky'
 import { flightStep, createFlightState, DEFAULT_FLIGHT, type FlightConfig } from './flightModel'
 import { Duck } from '../avatar/Duck'
 import { FollowCamera } from '../avatar/FollowCamera'
@@ -27,7 +29,10 @@ import { DEFAULT_FOLLOW } from '../avatar/followConfig'
 import { DEFAULT_ANIM_MAP, type AnimMapConfig } from '../avatar/animationMap'
 
 const MAX_FRAME_DT = 0.1 // clamp to avoid spiral-of-death after a tab stall
-const BG = '#e9eef3' // light, clean test-bed background
+
+// Rings are cosmetic in the playground (no fly-through boost), so MapView always
+// gets the same empty "passed" set — every ring renders in the not-passed color.
+const EMPTY_RING_IDS = new Set<number>()
 
 /** Runs the fixed-timestep flight model and positions the duck from the result. */
 function PlaygroundRig({
@@ -41,6 +46,9 @@ function PlaygroundRig({
   clipRef,
   keyRef,
   mergedRef,
+  mapRef,
+  finishedRef,
+  onFinish,
 }: {
   stateRef: React.RefObject<DuckState>
   actionsRef: React.RefObject<DuckActions>
@@ -52,36 +60,57 @@ function PlaygroundRig({
   clipRef: React.RefObject<string>
   keyRef: React.RefObject<KeyActions>
   mergedRef: React.RefObject<DuckActions>
+  mapRef: React.RefObject<MapDef>
+  finishedRef: React.RefObject<boolean>
+  onFinish: () => void
 }) {
   const accRef = useRef(0)
 
   useFrame((_, delta) => {
     const cfg = cfgRef.current
-    accRef.current += Math.min(delta, MAX_FRAME_DT)
 
-    // Merge the slider baseline with live keyboard input ONCE per frame (neither
-    // changes within a frame). This merged object is the single source of truth
-    // for BOTH the physics AND the duck's animation + HUD, so holding Space (flap)
-    // actually swings the wings -- previously the Duck read the slider-only ref and
-    // never saw keyboard flap, so it stayed gliding.
-    const base = actionsRef.current
-    const k = keyRef.current
-    const merged: DuckActions = {
-      flap: Math.min(1, base.flap + k.flap),
-      flapImpulse: false,
-      lean: Math.max(-1, Math.min(1, base.lean + k.lean)),
-      dive: Math.min(1, base.dive + k.dive),
-      quack: base.quack,
-      egg67: base.egg67,
-      confidence: base.confidence,
-    }
-    mergedRef.current = merged
+    // Keep flight + walls in lockstep: the playable corridor is exactly the map's
+    // half-width, so the lateral clamp always matches the rendered side walls.
+    cfg.lateralRange = mapRef.current.halfWidth
 
-    while (accRef.current >= cfg.fixedDt) {
-      const stepActions: DuckActions = { ...merged, flapImpulse: impulseRef.current }
-      impulseRef.current = false // one-shot, consumed by the first sub-step
-      stateRef.current = flightStep(stateRef.current, stepActions, cfg, cfg.fixedDt)
-      accRef.current -= cfg.fixedDt
+    // While the run is frozen at the finish line we stop advancing the sim (the
+    // duck holds its final pose); we still fall through to re-draw it below so the
+    // chase camera can settle behind it.
+    if (!finishedRef.current) {
+      accRef.current += Math.min(delta, MAX_FRAME_DT)
+
+      // Merge the slider baseline with live keyboard input ONCE per frame (neither
+      // changes within a frame). This merged object is the single source of truth
+      // for BOTH the physics AND the duck's animation + HUD, so holding Space (flap)
+      // actually swings the wings -- previously the Duck read the slider-only ref and
+      // never saw keyboard flap, so it stayed gliding.
+      const base = actionsRef.current
+      const k = keyRef.current
+      const merged: DuckActions = {
+        flap: Math.min(1, base.flap + k.flap),
+        flapImpulse: false,
+        lean: Math.max(-1, Math.min(1, base.lean + k.lean)),
+        dive: Math.min(1, base.dive + k.dive),
+        quack: base.quack,
+        egg67: base.egg67,
+        confidence: base.confidence,
+      }
+      mergedRef.current = merged
+
+      while (accRef.current >= cfg.fixedDt) {
+        const stepActions: DuckActions = { ...merged, flapImpulse: impulseRef.current }
+        impulseRef.current = false // one-shot, consumed by the first sub-step
+        stateRef.current = flightStep(stateRef.current, stepActions, cfg, cfg.fixedDt)
+        accRef.current -= cfg.fixedDt
+      }
+
+      // Finish line: clamp at the end of the finite track and freeze the run once.
+      const end = mapRef.current.length
+      if (stateRef.current.position[2] >= end) {
+        stateRef.current.position[2] = end
+        finishedRef.current = true
+        onFinish()
+      }
     }
 
     const s = stateRef.current
@@ -183,11 +212,15 @@ export function PersonAPlayground() {
   const impulseRef = useRef(false)
   const duckGroupRef = useRef<Group | null>(null)
   const clipRef = useRef<string>('idle_1')
+  const finishedRef = useRef(false)
 
   // Debug toggle: off by default so mode=a is a clean, playable game. On reveals
   // the whole leva panel. Plain React state (not a ref) so the Leva hidden prop
   // and the button label re-render.
   const [debug, setDebug] = useState(false)
+  // Finish state drives the results overlay (ref freezes the sim; state re-renders).
+  const [finished, setFinished] = useState(false)
+  const onFinish = useCallback(() => setFinished(true), [])
 
   // Stable handlers: ref access lives inside event callbacks, never in render.
   const fireImpulse = useCallback(() => {
@@ -195,10 +228,24 @@ export function PersonAPlayground() {
   }, [])
   const resetState = useCallback(() => {
     stateRef.current = createFlightState()
+    finishedRef.current = false
+    setFinished(false)
   }, [])
 
   // Keyboard (Space = flap, A/D = lean, W = dive). Always on in the playground.
   const keyRef = useKeyboardControls(true, fireImpulse)
+
+  // Seed-driven world. buildMap is pure/deterministic, so the same seed always
+  // yields the identical terrain. Rebuilding on seed change also resets the run.
+  const world = useControls('World', {
+    seed: { value: 1337, min: 0, max: 99999, step: 1 },
+  })
+  const map = useMemo(() => buildMap(world.seed), [world.seed])
+  const mapRef = useRef<MapDef>(map)
+  mapRef.current = map
+  useEffect(() => {
+    resetState()
+  }, [world.seed, resetState])
 
   const actions = useControls('Actions (manual)', {
     flap: { value: 0, min: 0, max: 1, step: 0.01 },
@@ -248,7 +295,9 @@ export function PersonAPlayground() {
     banking: folder({
       maxRollDeg: { value: DEFAULT_FLIGHT.maxRollDeg, min: 0, max: 70 },
       lateralSpeedAtMaxBank: { value: DEFAULT_FLIGHT.lateralSpeedAtMaxBank, min: 0, max: 25 },
-      lateralRange: { value: DEFAULT_FLIGHT.lateralRange, min: 5, max: 80 },
+      // Corridor half-width: defaults to the map's so flight clamp == rendered
+      // walls. The rig re-asserts cfg.lateralRange = map.halfWidth each frame.
+      lateralRange: { value: DEFAULT_MAP_CONFIG.halfWidth, min: 5, max: 200 },
     }),
     bounds: folder({
       minAltitude: { value: DEFAULT_FLIGHT.minAltitude, min: 0, max: 20 },
@@ -300,12 +349,14 @@ export function PersonAPlayground() {
     <div style={{ position: 'fixed', inset: 0 }}>
       {/* leva panel only shows when debug is on; values persist when hidden. */}
       <Leva hidden={!debug} />
-      <Canvas camera={{ position: startCam, fov: 62, near: 0.1, far: 8000 }}>
-        <color attach="background" args={[BG]} />
-        <ambientLight intensity={0.9} />
-        <hemisphereLight color="#ffffff" groundColor="#c8d2dc" intensity={0.6} />
-        <directionalLight position={[30, 80, 20]} intensity={0.8} />
-        <DebugArena halfWidth={cfg.lateralRange} stateRef={stateRef} />
+      <Canvas shadows camera={{ position: startCam, fov: 62, near: 0.1, far: 8000 }}>
+        <Suspense fallback={null}>
+          <SimpleSky map={map} />
+        </Suspense>
+        <ambientLight intensity={0.6} />
+        <hemisphereLight color="#ffffff" groundColor="#c8d2dc" intensity={0.5} />
+        <directionalLight position={[50, 80, 20]} intensity={1.2} castShadow />
+        <MapView map={map} passedRingIds={EMPTY_RING_IDS} />
         <PlaygroundRig
           stateRef={stateRef}
           actionsRef={actionsRef}
@@ -317,12 +368,86 @@ export function PersonAPlayground() {
           clipRef={clipRef}
           keyRef={keyRef}
           mergedRef={mergedActionsRef}
+          mapRef={mapRef}
+          finishedRef={finishedRef}
+          onFinish={onFinish}
         />
         <FollowCamera stateRef={stateRef} cfg={cam} />
       </Canvas>
       <Hud stateRef={stateRef} actionsRef={mergedActionsRef} clipRef={clipRef} />
       <ControlsHint />
       <DebugToggle debug={debug} onToggle={() => setDebug((d) => !d)} />
+      {finished && <FinishOverlay stateRef={stateRef} onReset={resetState} />}
+    </div>
+  )
+}
+
+/**
+ * Results card shown when the duck reaches the finish line. Snapshots the final
+ * run stats once on mount (in an effect, so render never reads the ref) and
+ * offers a restart that resets the run from the start.
+ */
+function FinishOverlay({
+  stateRef,
+  onReset,
+}: {
+  stateRef: React.RefObject<DuckState>
+  onReset: () => void
+}) {
+  const [stats, setStats] = useState<{ distance: number; speed: number } | null>(null)
+  useEffect(() => {
+    const s = stateRef.current
+    setStats({ distance: s.distance, speed: s.speed })
+  }, [stateRef])
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'rgba(8,14,22,0.45)',
+        backdropFilter: 'blur(2px)',
+      }}
+    >
+      <div
+        style={{
+          padding: '28px 36px',
+          borderRadius: 14,
+          background: 'rgba(20,30,40,0.92)',
+          color: '#eaf4ff',
+          font: '15px/1.6 ui-monospace, monospace',
+          textAlign: 'center',
+          minWidth: 260,
+          boxShadow: '0 12px 48px rgba(0,0,0,0.4)',
+        }}
+      >
+        <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: 2, color: '#ffd24a' }}>
+          FINISH
+        </div>
+        <div style={{ margin: '14px 0', opacity: 0.85 }}>
+          <div>distance flown: {(stats?.distance ?? 0).toFixed(0)} m</div>
+          <div>final speed: {(stats?.speed ?? 0).toFixed(1)} u/s</div>
+        </div>
+        <button
+          type="button"
+          onClick={onReset}
+          style={{
+            marginTop: 6,
+            padding: '8px 20px',
+            borderRadius: 8,
+            border: 'none',
+            background: '#3b82f6',
+            color: '#fff',
+            font: '14px/1 ui-monospace, monospace',
+            cursor: 'pointer',
+          }}
+        >
+          fly again
+        </button>
+      </div>
     </div>
   )
 }
