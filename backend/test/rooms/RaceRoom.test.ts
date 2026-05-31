@@ -18,10 +18,21 @@ import { createGameServer } from "@/app";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Poll a condition until it is true or we time out. Robust to patch timing. */
+/**
+ * Poll a condition until it is true or we time out. Robust to patch timing and to the brief
+ * window after connect where client-side collections aren't decoded yet (a throwing check is
+ * treated as "not yet"). Preferred over waitForNextPatch, which hangs when state is static.
+ */
 async function waitUntil(check: () => boolean, timeoutMs = 2000): Promise<void> {
   const start = Date.now();
-  while (!check()) {
+  for (;;) {
+    let ok = false;
+    try {
+      ok = check();
+    } catch {
+      ok = false;
+    }
+    if (ok) return;
     if (Date.now() - start > timeoutMs) throw new Error("waitUntil: timed out");
     await sleep(15);
   }
@@ -55,7 +66,11 @@ describe("RaceRoom — joining and the lobby", () => {
     expect(room.state.ringLayout.length).toBeGreaterThan(0);
 
     // The client receives the same seed + ring layout it can rebuild the world from.
-    await client.waitForNextPatch();
+    await waitUntil(
+      () =>
+        client.state.mapSeed === room.state.mapSeed &&
+        client.state.ringLayout.length === room.state.ringLayout.length,
+    );
     expect(client.state.mapSeed).toBe(room.state.mapSeed);
     expect(client.state.ringLayout.length).toBe(room.state.ringLayout.length);
   });
@@ -64,9 +79,11 @@ describe("RaceRoom — joining and the lobby", () => {
     const room = await colyseus.createRoom("race");
     const c1 = await colyseus.connectTo(room, alice);
     const c2 = await colyseus.connectTo(room, bob);
-    await c1.waitForNextPatch();
-    await c2.waitForNextPatch();
 
+    await waitUntil(
+      () =>
+        c1.state.mapSeed === room.state.mapSeed && c2.state.mapSeed === room.state.mapSeed,
+    );
     expect(c1.state.mapSeed).toBe(c2.state.mapSeed);
     expect(c1.state.ringLayout.length).toBe(c2.state.ringLayout.length);
   });
