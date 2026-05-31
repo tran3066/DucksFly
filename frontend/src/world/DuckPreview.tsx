@@ -3,15 +3,20 @@ import { Canvas } from '@react-three/fiber'
 import { Grid, OrbitControls } from '@react-three/drei'
 import { Duck } from './Duck'
 import {
+  Branch,
   Bush,
+  BUSH_VARIANTS,
   Flowers,
   FLOWER_VARIANTS,
   Grass,
   GRASS_VARIANTS,
   Ground,
   GROUND_VARIANTS,
+  Mushroom,
+  MUSHROOM_VARIANTS,
   Rock,
   ROCK_VARIANTS,
+  Stump,
   Tree,
   TREE_VARIANTS,
 } from './NatureProp'
@@ -74,7 +79,17 @@ export function DuckPreview() {
           {FLOWER_VARIANTS.map((v, i) => (
             <Flowers key={v} variant={v} position={[i * 1.5 - 0.75, 0, 2.5]} />
           ))}
-          <Bush position={[-3, 0, 0]} />
+          {/* All three bushes in a row to the left. */}
+          {BUSH_VARIANTS.map((v, i) => (
+            <Bush key={v} variant={v} position={[-3, 0, (i - 1) * 2]} />
+          ))}
+          {/* Both mushrooms. */}
+          {MUSHROOM_VARIANTS.map((v, i) => (
+            <Mushroom key={v} variant={v} position={[i * 1 - 0.5, 0, 3.5]} />
+          ))}
+          {/* Single props: a fallen branch and a stump. */}
+          <Branch position={[-5, 0, 3]} />
+          <Stump position={[5, 0, 3]} />
         </Suspense>
         <Grid
           args={[20, 20]}

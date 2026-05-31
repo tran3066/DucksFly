@@ -4,9 +4,9 @@ import { useFBX, useTexture } from '@react-three/drei'
 import type { ThreeElements } from '@react-three/fiber'
 
 // The SimpleNaturePack: a set of low-poly FBX props that all share one tiny
-// palette atlas. The atlas lives one level up because it is shared by the pack.
+// palette atlas, which lives in the pack folder alongside the models.
 const PACK_DIR = '/models/SimpleNaturePack'
-const ATLAS_URL = '/models/NaturePackLite_Texture_01.png'
+const ATLAS_URL = `${PACK_DIR}/NaturePackLite_Texture_01.png`
 
 export type NaturePropProps = ThreeElements['group'] & {
   /** FBX filename within /models/SimpleNaturePack, e.g. "Tree_01.fbx". */
@@ -87,8 +87,39 @@ export function Tree({
   return <NatureProp file={`Tree_0${variant}.fbx`} scale={0.01} {...props} />
 }
 
-export function Bush(props: ThreeElements['group']) {
-  return <NatureProp file="Bush_01.fbx" scale={0.01} {...props} />
+/** The available bushes in the pack (Bush_01.fbx … Bush_03.fbx). */
+export type BushVariant = 1 | 2 | 3
+export const BUSH_VARIANTS: BushVariant[] = [1, 2, 3]
+
+export function Bush({
+  variant = 1,
+  ...props
+}: ThreeElements['group'] & { variant?: BushVariant }) {
+  return <NatureProp file={`Bush_0${variant}.fbx`} scale={0.01} {...props} />
+}
+
+// The branch is authored at near-unit scale (~0.8 units long), unlike the
+// ~30–80 unit foliage, so it needs scale ~1.5 (not 0.01) to read as a ~1.2-unit
+// fallen branch. fitHeight is wrong here — it's long and thin, not tall.
+export function Branch(props: ThreeElements['group']) {
+  return <NatureProp file="Branch_01.fbx" scale={1.5} {...props} />
+}
+
+/** A tree stump (single model). */
+export function Stump(props: ThreeElements['group']) {
+  return <NatureProp file="Stump_01.fbx" scale={0.01} {...props} />
+}
+
+/** The available mushrooms in the pack (Mushroom_01.fbx … Mushroom_02.fbx). */
+export type MushroomVariant = 1 | 2
+export const MUSHROOM_VARIANTS: MushroomVariant[] = [1, 2]
+
+// Small ground detail — normalize to ~0.3 units tall.
+export function Mushroom({
+  variant = 1,
+  ...props
+}: ThreeElements['group'] & { variant?: MushroomVariant }) {
+  return <NatureProp file={`Mushroom_0${variant}.fbx`} fitHeight={0.3} {...props} />
 }
 
 /** The available ground tiles in the pack (Ground_01.fbx … Ground_03.fbx). */

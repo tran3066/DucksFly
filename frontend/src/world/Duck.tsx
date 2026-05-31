@@ -32,10 +32,18 @@ export type DuckProps = ThreeElements['group'] & {
  *   <Duck onReady={(d) => (duckRef.current = d)} />
  *   // later, from your MediaPipe/action loop:  duckRef.current?.play('flight_straight')
  */
+/**
+ * Default world scale for the duck. The Unity FBX is authored in centimetres,
+ * so it imports ~50,000 units tall; this brings it to ~1.5 world units. Override
+ * via the `scale` prop if needed.
+ */
+export const DUCK_SCALE = 0.00003
+
 export function Duck({
   variant = 'male',
   clip = 'idle_1',
   fade = 0.25,
+  scale = DUCK_SCALE,
   onReady,
   ...groupProps
 }: DuckProps) {
@@ -85,7 +93,7 @@ export function Duck({
 
   if (!duck) return null
   return (
-    <group {...groupProps}>
+    <group scale={scale} {...groupProps}>
       <primitive object={duck.scene} />
     </group>
   )
