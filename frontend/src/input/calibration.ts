@@ -17,6 +17,8 @@
 //     over a couple seconds and hands the frames to averageFrames; not unit
 //     tested because it depends on real timers and a real pose stream
 
+import { create } from 'zustand'
+
 // A landmark is the minimum calibration cares about. MediaPipe actually returns
 // a richer landmark that also has z, and that richer shape is assignable to this
 // one (it has every field we read plus extra), so the UI can pass the store's
@@ -204,4 +206,84 @@ export function computeBaseline(pose: Frame): Baseline {
   const restWristY = (l15.y + r16.y) / 2
 
   return { shoulderWidth, restShoulderAngle, restWristY }
+}
+
+// ---------------------------------------------------------------------------
+// 03.3 Recalibrate: drift detection + central in-memory baseline store
+// ---------------------------------------------------------------------------
+
+// How far the player's live on-screen size may drift from the calibrated size
+// before we ask them to re-T-pose, expressed as a symmetric RATIO so the check
+// is itself scale-aware: 1.3 means "fire once they look ~30% bigger OR ~30%
+// smaller than at calibration". Comparing a ratio (not an absolute pixel delta)
+// is what keeps a tall player and a short player on the same threshold. Tuned in
+// the browser per VERIFY.md; bump it up if the flag feels twitchy.
+export const DRIFT_RATIO = 1.3
+
+/**
+ * True when the stored baseline no longer matches the player's current apparent
+ * size, so every gesture stage's scale normalization would be wrong and the
+ * player should recalibrate.
+ *
+ * Returns true when there is no baseline at all (nothing to normalize against,
+ * so the game must calibrate before play) or when the live shoulder width is
+ * non-positive (a degenerate / untracked frame). Otherwise it fires only when
+ * the live/stored ratio leaves the symmetric [1/DRIFT_RATIO, DRIFT_RATIO] band,
+ * so ordinary breathing and sway stay quiet.
+ *
+ * Pure on purpose: any flicker smoothing (debounce / hysteresis) belongs in the
+ * UI that polls this, not in the predicate the tests pin.
+ */
+export function needsRecalibration(stored: Baseline | null, liveShoulderWidth: number): boolean {
+  if (!stored) return true
+  if (liveShoulderWidth <= 0) return true
+  const r = liveShoulderWidth / stored.shoulderWidth
+  return r > DRIFT_RATIO || r < 1 / DRIFT_RATIO
+}
+
+// The session's single source of truth for the calibrated baseline. Every later
+// gesture stage reads this one store instead of threading a baseline prop
+// through the component tree.
+//
+// Intentionally NOT persisted (no zustand `persist` middleware, no localStorage):
+// a fresh page load must start with `baseline === null` so the calibration gate
+// re-prompts every session. Camera position, lighting, and where the player sits
+// all change between sessions, so a per-session capture is more trustworthy than
+// a stale saved one. See KNOWN_ISSUES / the recalibrate-each-reload decision.
+export interface CalibrationState {
+  baseline: Baseline | null
+  /** Replace the stored baseline (last write wins; never merges). */
+  setBaseline: (b: Baseline) => void
+  /** Drop the baseline back to null (used by tests and a future "log out"). */
+  clearBaseline: () => void
+}
+
+export const useCalibrationStore = create<CalibrationState>((set) => ({
+  baseline: null,
+  setBaseline: (b) => set({ baseline: b }),
+  clearBaseline: () => set({ baseline: null }),
+}))
+
+// Thin non-React accessors so the pose loop, the recalibrate flow, and the unit
+// tests can read/write the baseline without mounting React.
+export function setBaseline(b: Baseline): void {
+  useCalibrationStore.getState().setBaseline(b)
+}
+export function getBaseline(): Baseline | null {
+  return useCalibrationStore.getState().baseline
+}
+
+/**
+ * Browser-side recalibrate (not unit tested): capture a fresh rest pose and, on
+ * success, replace the stored baseline (last write wins). On failure it returns
+ * false WITHOUT touching the store, so a botched recapture (player stepped out of
+ * frame) never clobbers a good baseline. Callers that want a countdown UI run
+ * their own and then write the store; this is the headless tie-together of 03.1
+ * capture + 03.2 baseline for code paths that do not need the countdown.
+ */
+export async function recalibrate(getLatestFrame: () => Frame | null): Promise<boolean> {
+  const res = await captureRestPose(getLatestFrame)
+  if (!res.ok) return false
+  setBaseline(computeBaseline(res.pose))
+  return true
 }

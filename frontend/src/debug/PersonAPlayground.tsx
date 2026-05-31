@@ -29,7 +29,12 @@ import { DEFAULT_FOLLOW } from '../avatar/followConfig'
 import { DEFAULT_ANIM_MAP, type AnimMapConfig } from '../avatar/animationMap'
 import { MAX_FRAME_DT, BOOST, BOOST_SLIDERS } from './playgroundConfig'
 import { WebcamPanel } from './WebcamPanel'
+import { useInputStore } from '../input/store'
 import type { Baseline } from '../input/calibration'
+
+// Mouth-open (the Face Landmarker jawOpen blendshape, 0..1) above this threshold
+// reads as a quack this frame. Fed from WebcamPanel's time-sliced face loop.
+const QUACK_THRESHOLD = 0.4
 
 /** Runs the fixed-timestep flight model and positions the duck from the result. */
 function PlaygroundRig({
@@ -100,7 +105,8 @@ function PlaygroundRig({
         flapImpulse: false,
         lean: Math.max(-1, Math.min(1, base.lean + k.lean)),
         dive: Math.min(1, base.dive + k.dive),
-        quack: base.quack,
+        // Quack fires from the slider OR an open mouth (jawOpen blendshape).
+        quack: base.quack || useInputStore.getState().jawOpen > QUACK_THRESHOLD,
         egg67: base.egg67,
         confidence: base.confidence,
       }
@@ -192,6 +198,7 @@ interface HudSnapshot {
   clip: string
   boost: number
   ringsPassed: number
+  jawOpen: number
 }
 
 /** Live readout. Snapshots refs on a timer (in an effect) so render never reads a ref. */
@@ -214,6 +221,7 @@ function Hud({
     clip: 'idle_1',
     boost: 0,
     ringsPassed: 0,
+    jawOpen: 0,
   }))
 
   useEffect(() => {
@@ -224,12 +232,13 @@ function Hud({
         clip: clipRef.current,
         boost: boostRef.current,
         ringsPassed: passedRingsRef.current.size,
+        jawOpen: useInputStore.getState().jawOpen,
       })
     }, 100)
     return () => clearInterval(id)
   }, [stateRef, actionsRef, clipRef, boostRef, passedRingsRef])
 
-  const { s, a, clip, boost, ringsPassed } = snap
+  const { s, a, clip, boost, ringsPassed, jawOpen } = snap
   const row = (label: string, value: string) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
       <span style={{ opacity: 0.6 }}>{label}</span>
@@ -271,6 +280,7 @@ function Hud({
       {row('dive', a.dive.toFixed(2))}
       {row('confidence', a.confidence.toFixed(2))}
       {row('quack', a.quack ? 'true' : 'false')}
+      {row('mouth jawOpen', jawOpen.toFixed(2))}
       {row('egg67', a.egg67 ? 'true' : 'false')}
     </div>
   )

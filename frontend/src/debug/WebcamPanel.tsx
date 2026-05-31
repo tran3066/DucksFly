@@ -24,10 +24,19 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useWebcam, attachStream, detachStream } from '../input/webcam'
 import { createPoseLandmarker } from '../input/pose/poseLandmarker'
 import { startPoseLoop } from '../input/pose/loop'
-import { captureRestPose, computeBaseline } from '../input/calibration'
+import { createFaceLandmarker } from '../input/pose/faceLandmarker'
+import { startFaceLoop } from '../input/pose/faceLoop'
+import {
+  captureRestPose,
+  computeBaseline,
+  setBaseline,
+  getBaseline,
+  needsRecalibration,
+} from '../input/calibration'
 import { useInputStore } from '../input/store'
+import type { LandmarkFrame } from '../input/fixtures/landmarks'
 import { DebugOverlay } from './DebugOverlay'
-import type { PoseLandmarker } from '@mediapipe/tasks-vision'
+import type { PoseLandmarker, FaceLandmarker } from '@mediapipe/tasks-vision'
 import type { Baseline } from '../input/calibration'
 
 // Default feed-box width in px when the parent does not pass panelSize. The box
@@ -53,6 +62,35 @@ const CAPTURE_MS = 2500
 // 3..2..1 timer; 'capturing' is the actual sampling window; 'failed' means the
 // capture saw no usable frames and the player should reframe and retry.
 type GatePhase = 'idle' | 'countdown' | 'capturing' | 'failed'
+
+// How often (ms) we re-check the live body scale against the stored baseline to
+// decide whether to show the "recalibrate?" hint. 400ms is responsive enough to
+// catch a player walking closer without polling every frame.
+const DRIFT_POLL_MS = 400
+
+// How many consecutive agreeing polls (~DRIFT_POLL_MS each) before the drift hint
+// flips on or off. A 3-tick (~1.2s) debounce keeps a single odd frame or a brief
+// lean from flashing the hint; the predicate itself stays pure in calibration.ts.
+const DRIFT_DEBOUNCE_TICKS = 3
+
+// Below this visibility we do not trust a shoulder landmark, matching the
+// calibration capture gate (VIS_MIN). Used only for the live drift read.
+const DRIFT_VIS_MIN = 0.5
+
+/**
+ * The player's current on-screen shoulder width (distance between landmarks 11
+ * and 12), or 0 when the body is not cleanly tracked. 0 means "no usable read
+ * this tick" so the drift watcher can skip it rather than treat a tracking blip
+ * as a huge scale change.
+ */
+function liveShoulderWidth(frame: LandmarkFrame | null): number {
+  if (!frame) return 0
+  const l = frame[11]
+  const r = frame[12]
+  if (!l || !r) return 0
+  if (l.visibility < DRIFT_VIS_MIN || r.visibility < DRIFT_VIS_MIN) return 0
+  return Math.hypot(l.x - r.x, l.y - r.y)
+}
 
 export interface WebcamPanelProps {
   // Called once with the computed Baseline when calibration succeeds. Optional so
@@ -80,10 +118,15 @@ export function WebcamPanel({ onCalibrated, panelSize }: WebcamPanelProps): Reac
   // in a ref (not state) because the loop reads it imperatively and we do not want
   // a re-render when it lands; modelReady (below) is the render-visible signal.
   const landmarkerRef = useRef<PoseLandmarker | null>(null)
+  // The loaded FaceLandmarker (face mesh + jawOpen blendshape), or null until it
+  // resolves. Loaded in parallel with the pose model.
+  const faceLandmarkerRef = useRef<FaceLandmarker | null>(null)
 
   // The stop() returned by startPoseLoop, or null when the loop is not running.
   // Kept in a ref so the start-once effect and the unmount cleanup share it.
   const loopStopRef = useRef<(() => void) | null>(null)
+  // The stop() for the time-sliced face loop, or null when it is not running.
+  const faceLoopStopRef = useRef<(() => void) | null>(null)
 
   // Guard so the loop is created exactly once even if the start-once effect runs
   // again (StrictMode double-invoke, dependency changes). The ref above can be
@@ -94,6 +137,7 @@ export function WebcamPanel({ onCalibrated, panelSize }: WebcamPanelProps): Reac
   // loading; videoReady flips true once the <video> actually has pixels (real
   // dimensions), which is when the loop is safe to start.
   const [modelReady, setModelReady] = useState(false)
+  const [faceModelReady, setFaceModelReady] = useState(false)
   const [videoReady, setVideoReady] = useState(false)
 
   // A friendly message if the MediaPipe model fails to load. Shown in the feed box
@@ -106,6 +150,11 @@ export function WebcamPanel({ onCalibrated, panelSize }: WebcamPanelProps): Reac
   const [calibrated, setCalibrated] = useState(false)
   const [phase, setPhase] = useState<GatePhase>('idle')
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS)
+
+  // Drift hint (03.3): true once the player's live body scale has drifted far
+  // enough from the stored baseline that gameplay normalization would be off, so
+  // we nudge them to recalibrate. Debounced in the watcher effect below.
+  const [driftWarning, setDriftWarning] = useState(false)
 
   // Measured feed-box pixel size, fed to DebugOverlay so the canvas matches the
   // rendered video box exactly. Derived from panelSize + the 4:3 ratio as the
@@ -154,6 +203,38 @@ export function WebcamPanel({ onCalibrated, panelSize }: WebcamPanelProps): Reac
       if (landmarkerRef.current) {
         landmarkerRef.current.close()
         landmarkerRef.current = null
+      }
+    }
+  }, [])
+
+  // --- Effect: load the FaceLandmarker once on mount (in parallel with the pose
+  //     model), close it on unmount. It feeds the face mesh + jawOpen; a failure
+  //     here is non-fatal (the body pose still drives the duck), so we only warn. ---
+  useEffect(() => {
+    let cancelled = false
+    createFaceLandmarker()
+      .then((lm) => {
+        if (cancelled) {
+          lm.close()
+          return
+        }
+        faceLandmarkerRef.current = lm
+        setFaceModelReady(true)
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        console.warn('[WebcamPanel] face model failed to load:', err)
+      })
+
+    return () => {
+      cancelled = true
+      if (faceLoopStopRef.current) {
+        faceLoopStopRef.current()
+        faceLoopStopRef.current = null
+      }
+      if (faceLandmarkerRef.current) {
+        faceLandmarkerRef.current.close()
+        faceLandmarkerRef.current = null
       }
     }
   }, [])
@@ -230,6 +311,31 @@ export function WebcamPanel({ onCalibrated, panelSize }: WebcamPanelProps): Reac
     // down once in the model effect's unmount cleanup. Tearing it down here would
     // stop/restart the loop on every dependency tick.
   }, [modelReady, videoReady])
+
+  // --- Effect: start the TIME-SLICED face loop once the face model is ready and
+  //     the video has pixels. It runs every Nth frame (default 2) so it does not
+  //     compete with the body pose, and writes faceLandmarks + jawOpen to the
+  //     store (the overlay draws the mesh; the playground reads jawOpen). ---
+  useEffect(() => {
+    const video = videoRef.current
+    const faceLm = faceLandmarkerRef.current
+    if (!faceModelReady || !videoReady || !faceLm || !video) return
+    if (faceLoopStopRef.current) return
+
+    faceLoopStopRef.current = startFaceLoop({
+      landmarker: faceLm,
+      video,
+      onFace: (r) =>
+        useInputStore
+          .getState()
+          .setFace(
+            r.landmarks
+              ? r.landmarks.map((p) => ({ x: p.x, y: p.y, z: p.z ?? 0, visibility: p.visibility ?? 1 }))
+              : null,
+            r.jawOpen,
+          ),
+    })
+  }, [faceModelReady, videoReady])
 
   // --- Effect: keep the overlay canvas the same pixel size as the rendered feed
   //     box, so the dots line up with the video. ResizeObserver corrects any

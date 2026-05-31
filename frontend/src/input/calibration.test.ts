@@ -4,8 +4,15 @@
 // through the calibration functions instead of running a live webcam. Each test
 // pins one behavior, and both substeps include an adversarial / edge case.
 
-import { describe, it, expect } from 'vitest'
-import { averageFrames, computeBaseline } from './calibration'
+import { describe, it, expect, beforeEach } from 'vitest'
+import {
+  averageFrames,
+  computeBaseline,
+  needsRecalibration,
+  setBaseline,
+  getBaseline,
+  useCalibrationStore,
+} from './calibration'
 import { makeRestFrame, makeLowVisFrame, scalePose } from './fixtures/landmarks'
 
 describe('03.1 rest pose capture', () => {
@@ -134,5 +141,48 @@ describe('03.2 per-player baselines', () => {
     const farLift = (farBase.restWristY - farWristY) / farBase.shoulderWidth
 
     expect(nearLift).toBeCloseTo(farLift, 4)
+  })
+})
+
+describe('03.3 recalibrate and persist', () => {
+  // A minimal Baseline with a chosen shoulder width; the other two fields are
+  // irrelevant to the drift check so they stay fixed.
+  const mk = (w: number) => ({ shoulderWidth: w, restShoulderAngle: 0, restWristY: 0.42 })
+
+  beforeEach(() => {
+    // Each test starts from "no baseline yet" so order never leaks between cases.
+    useCalibrationStore.getState().clearBaseline()
+  })
+
+  it('recalibrating replaces the stored baseline', () => {
+    // Last write wins: a second calibration must REPLACE, not merge or append, so
+    // the gesture stages always read one current scale.
+    setBaseline(mk(0.2))
+    setBaseline(mk(0.3))
+    expect(getBaseline()?.shoulderWidth).toBe(0.3)
+  })
+
+  it('drift flag fires when scale grows past threshold', () => {
+    // 0.30 / 0.20 = 1.5x, beyond the 1.3x band: the player moved much closer.
+    expect(needsRecalibration(mk(0.2), 0.3)).toBe(true)
+  })
+
+  it('drift flag fires when scale shrinks past threshold', () => {
+    // 0.12 / 0.20 = 0.6x, below 1/1.3 ~= 0.77: the player moved much farther.
+    // Proves the band is symmetric for closer vs farther.
+    expect(needsRecalibration(mk(0.2), 0.12)).toBe(true)
+  })
+
+  it('ADVERSARIAL: small wobble within tolerance does NOT fire', () => {
+    // 0.22 / 0.20 = 1.1x, inside the 1.3x band: normal breathing/sway must never
+    // spam "please recalibrate".
+    expect(needsRecalibration(mk(0.2), 0.22)).toBe(false)
+  })
+
+  it('no stored baseline means recalibration is needed', () => {
+    // Before the first calibration there is nothing to normalize against, so the
+    // game must calibrate before play (this is also what makes a fresh page load
+    // re-prompt: the in-memory store starts null).
+    expect(needsRecalibration(null, 0.2)).toBe(true)
   })
 })

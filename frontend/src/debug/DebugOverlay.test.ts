@@ -5,7 +5,7 @@
 // so the math is verified in isolation from the drawing code.
 
 import { describe, it, expect } from 'vitest'
-import { project } from './DebugOverlay'
+import { project, resolveEdge } from './DebugOverlay'
 
 describe('project (normalized -> pixels)', () => {
   it('scales center to canvas center', () => {
@@ -32,5 +32,35 @@ describe('project (normalized -> pixels)', () => {
     // frame. We pin those to the nearest edge instead of drawing off-canvas:
     // x = 1.2 clamps to the right edge (640), y = -0.1 clamps to the top (0).
     expect(project({ x: 1.2, y: -0.1 }, 640, 480)).toEqual({ x: 640, y: 0 })
+  })
+})
+
+describe('resolveEdge (face-mesh connection -> two pixel points)', () => {
+  // The face mesh ships its connections as { start, end } index pairs into a
+  // landmark array. resolveEdge looks those two indices up, guards every access
+  // (an endpoint can be out of range for a short or partial frame), and returns
+  // the two projected pixel points only when BOTH endpoints exist. Drawing code
+  // can then loop the connection set and skip whatever resolveEdge skips.
+  const frame = [
+    { x: 0, y: 0, z: 0, visibility: 1 }, // index 0 -> top-left
+    { x: 0.5, y: 0.5, z: 0, visibility: 1 }, // index 1 -> center
+    { x: 1, y: 1, z: 0, visibility: 1 }, // index 2 -> bottom-right
+  ]
+
+  it('projects both endpoints when both indices are in range', () => {
+    // start=0 -> (0,0), end=2 -> (640,480) on a 640x480 canvas. Confirms both
+    // ends go through project() so the line lands in pixel space.
+    expect(resolveEdge(frame, { start: 0, end: 2 }, 640, 480)).toEqual([
+      { x: 0, y: 0 },
+      { x: 640, y: 480 },
+    ])
+  })
+
+  it('ADVERSARIAL: returns null when an endpoint index is out of range', () => {
+    // The mesh constants index up to 477, but a frame might be shorter (or empty)
+    // on a partial detection. Index 99 does not exist here, so the edge is
+    // skipped (null) instead of crashing on an undefined landmark.
+    expect(resolveEdge(frame, { start: 0, end: 99 }, 640, 480)).toBeNull()
+    expect(resolveEdge(frame, { start: 99, end: 1 }, 640, 480)).toBeNull()
   })
 })
