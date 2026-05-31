@@ -1,0 +1,7 @@
+**/node_modules
+**/build
+frontend
+.git
+*.md
+.env*
+prompts

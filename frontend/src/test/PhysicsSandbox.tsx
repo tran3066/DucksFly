@@ -14,7 +14,9 @@ import {
 import { buildMap, ringCrossing, DEFAULT_MAP_CONFIG, type MapDef } from '../map';
 import { DuckModel } from './DuckModel';
 import { MapView } from './MapView';
+import { SKY_HORIZON } from '../theme/palette';
 import { SimpleSky } from '../world/SimpleSky';
+import { WorldLighting } from '../world/WorldLighting';
 
 const MAX_FRAME_DT = 0.1; // clamp to avoid spiral-of-death after a stall
 
@@ -308,11 +310,11 @@ export function PhysicsSandbox() {
   return (
     <div style={{ position: 'fixed', inset: 0 }}>
       <Canvas shadows camera={{ position: [0, 26, -16], fov: 60, near: 1, far: 5000 }}>
+        <color attach="background" args={[SKY_HORIZON]} />
         <Suspense fallback={null}>
           <SimpleSky map={map} />
         </Suspense>
-        <ambientLight intensity={0.6} />
-        <directionalLight position={[50, 80, 20]} intensity={1.2} castShadow />
+        <WorldLighting preset="day" followRef={stateRef} sunDistance={180} shadowExtent={160} />
         <MapView map={map} passedRingIds={passedRef.current} />
         <DuckRig
           stateRef={stateRef}

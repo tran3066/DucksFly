@@ -2,24 +2,17 @@ import { Suspense, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Grid, OrbitControls } from '@react-three/drei'
 import { Duck } from './Duck'
+import { WorldLighting } from './WorldLighting'
+import { Branch, Bush, Flowers, Grass, Ground, Mushroom, Rock, Stump, Tree } from './NatureProp'
 import {
-  Branch,
-  Bush,
   BUSH_VARIANTS,
-  Flowers,
   FLOWER_VARIANTS,
-  Grass,
   GRASS_VARIANTS,
-  Ground,
   GROUND_VARIANTS,
-  Mushroom,
   MUSHROOM_VARIANTS,
-  Rock,
   ROCK_VARIANTS,
-  Stump,
-  Tree,
   TREE_VARIANTS,
-} from './NatureProp'
+} from './naturePack'
 import type { ClipName, DuckVariant } from './loadDuck'
 
 // A few representative clips for eyeballing the animations.
@@ -50,13 +43,8 @@ export function DuckPreview() {
     <div style={{ position: 'fixed', inset: 0 }}>
       <Canvas shadows camera={{ position: [3, 2, 4], fov: 50 }}>
         <color attach="background" args={['#cfe8ff']} />
-        <hemisphereLight args={['#ffffff', '#8d6e4f', 0.9]} />
-        <directionalLight
-          position={[5, 8, 5]}
-          intensity={1.4}
-          castShadow
-          shadow-mapSize={[1024, 1024]}
-        />
+        {/* Shared lighting rig, with a tight shadow frustum for this close-up scene. */}
+        <WorldLighting preset="day" sunDistance={20} shadowExtent={12} />
         <Duck variant={variant} clip={clip} scale={scale} />
         <Suspense fallback={null}>
           {/* All five tree variants in a row behind the duck. */}

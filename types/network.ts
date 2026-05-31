@@ -19,22 +19,6 @@ export type RacePhase = "lobby" | "countdown" | "racing" | "finished";
 /** The duck appearances that ship for the picker (docs/DESIGN.md §2). */
 export type DuckVariant = "male" | "female";
 
-/**
- * One ring on the course. Ring positions are sent alongside the map seed so every client
- * agrees on them exactly (docs/ARCHITECTURE.md §6). Ring collisions are client-local; the
- * client reports a pass with a `ringPassed` message.
- */
-export interface RingDef {
-  /** Stable id, also the intended pass order (0, 1, 2, ...). */
-  id: number;
-  /** Center of the ring in world space. */
-  pos: Vec3;
-  /** Orientation the ring faces. */
-  quat: Quat;
-  /** Inner radius the duck must pass through, in world units. */
-  radius: number;
-}
-
 /** One player's live state, synced to everyone many times per second. */
 export interface PlayerState {
   id: string;
@@ -46,14 +30,18 @@ export interface PlayerState {
   vel: Vec3;
   /** Which way the duck is facing. */
   quat: Quat;
-  /** How many rings this player has passed so far. */
+  /** How many rings this player has flown through so far (client-reported, display only). */
   ringsPassed: number;
-  /** Current lap number. */
-  lap: number;
   /** Current race position (1 = first). */
   rank: number;
-  /** True while the player is spun out from a collision (server-authoritative). */
-  spunOut: boolean;
+  /** True once the player has crossed the finish line (client-reported, server-latched). */
+  finished: boolean;
+  /** Lobby ready flag. */
+  ready: boolean;
+  /** How many player-vs-player collisions this player has had this race (info only). */
+  collisions: number;
+  /** Epoch ms the player finished, or 0 if not finished. Elapsed = finishTime - raceStartAt. */
+  finishTime: number;
 }
 
 /**
@@ -63,11 +51,21 @@ export interface PlayerState {
  */
 export interface RaceRoomState {
   phase: RacePhase;
-  /** One number that lets every client build the same world (docs/ARCHITECTURE.md §6). */
+  /** Short, server-generated invite code for this lobby (e.g. "K7QF"). */
+  code: string;
+  /**
+   * One number that lets every client build the identical world (docs/ARCHITECTURE.md §6).
+   * The course (rings included) is generated client-side from this seed; the server keeps no
+   * ring/map geometry of its own.
+   */
   mapSeed: number;
-  /** Where the rings are, sent once when you join. */
-  ringLayout: RingDef[];
   /** Epoch ms when the countdown ends and racing begins (0 outside countdown). */
   countdownEndsAt: number;
+  /** Epoch ms when racing began (0 outside racing/finished); the base for elapsed times. */
+  raceStartAt: number;
+  /** Epoch ms the race auto-ends after the first finisher (first finish + grace); 0 until then. */
+  finishWindowEndsAt: number;
+  /** sessionId of the host (the only player allowed to start); "" if the room is empty. */
+  hostId: string;
   players: Record<string, PlayerState>;
 }

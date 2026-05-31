@@ -2,6 +2,15 @@ import { useMemo } from 'react'
 import * as THREE from 'three'
 import { useFBX, useTexture } from '@react-three/drei'
 import type { ThreeElements } from '@react-three/fiber'
+import type {
+  BushVariant,
+  FlowerVariant,
+  GrassVariant,
+  GroundVariant,
+  MushroomVariant,
+  RockVariant,
+  TreeVariant,
+} from './naturePack'
 
 // The SimpleNaturePack: a set of low-poly FBX props that all share one tiny
 // palette atlas, which lives in the pack folder alongside the models.
@@ -75,11 +84,8 @@ export function NatureProp({ file, fitHeight, ...props }: NaturePropProps) {
 }
 
 // Named presets. The default scale brings each model to a sensible world size;
-// callers can still override scale (a later prop in the spread wins).
-
-/** The available tree shapes in the pack (Tree_01.fbx … Tree_05.fbx). */
-export type TreeVariant = 1 | 2 | 3 | 4 | 5
-export const TREE_VARIANTS: TreeVariant[] = [1, 2, 3, 4, 5]
+// callers can still override scale (a later prop in the spread wins). Variant
+// types + lists live in ./naturePack so this file only exports components.
 
 export function Tree({
   variant = 1,
@@ -87,10 +93,6 @@ export function Tree({
 }: ThreeElements['group'] & { variant?: TreeVariant }) {
   return <NatureProp file={`Tree_0${variant}.fbx`} scale={0.01} {...props} />
 }
-
-/** The available bushes in the pack (Bush_01.fbx … Bush_03.fbx). */
-export type BushVariant = 1 | 2 | 3
-export const BUSH_VARIANTS: BushVariant[] = [1, 2, 3]
 
 export function Bush({
   variant = 1,
@@ -111,10 +113,6 @@ export function Stump(props: ThreeElements['group']) {
   return <NatureProp file="Stump_01.fbx" scale={0.01} {...props} />
 }
 
-/** The available mushrooms in the pack (Mushroom_01.fbx … Mushroom_02.fbx). */
-export type MushroomVariant = 1 | 2
-export const MUSHROOM_VARIANTS: MushroomVariant[] = [1, 2]
-
 // Small ground detail — normalize to ~0.3 units tall.
 export function Mushroom({
   variant = 1,
@@ -122,10 +120,6 @@ export function Mushroom({
 }: ThreeElements['group'] & { variant?: MushroomVariant }) {
   return <NatureProp file={`Mushroom_0${variant}.fbx`} fitHeight={0.3} {...props} />
 }
-
-/** The available ground tiles in the pack (Ground_01.fbx … Ground_03.fbx). */
-export type GroundVariant = 1 | 2 | 3
-export const GROUND_VARIANTS: GroundVariant[] = [1, 2, 3]
 
 // Ground tiles are modular ~30-unit squares — about 16x smaller in raw units
 // than the trees — so they need a much larger scale than the foliage presets.
@@ -137,10 +131,6 @@ export function Ground({
   return <NatureProp file={`Ground_0${variant}.fbx`} scale={0.4} {...props} />
 }
 
-/** The available rocks in the pack (Rock_01.fbx … Rock_05.fbx). */
-export type RockVariant = 1 | 2 | 3 | 4 | 5
-export const ROCK_VARIANTS: RockVariant[] = [1, 2, 3, 4, 5]
-
 // Rock source models have wildly inconsistent raw scales (~0.1 to ~195 units),
 // so a single `scale` can't work. Normalize each to ~1.2 units tall instead;
 // callers can still vary size per placement with the `scale` prop.
@@ -151,10 +141,6 @@ export function Rock({
   return <NatureProp file={`Rock_0${variant}.fbx`} fitHeight={1.2} {...props} />
 }
 
-/** The available grass tufts in the pack (Grass_01.fbx … Grass_02.fbx). */
-export type GrassVariant = 1 | 2
-export const GRASS_VARIANTS: GrassVariant[] = [1, 2]
-
 // Grass tufts are small foliage; normalize to ~0.4 units tall (scale varies in
 // the source like the rocks, so fitHeight is safer than a fixed scale).
 export function Grass({
@@ -163,10 +149,6 @@ export function Grass({
 }: ThreeElements['group'] & { variant?: GrassVariant }) {
   return <NatureProp file={`Grass_0${variant}.fbx`} fitHeight={0.4} {...props} />
 }
-
-/** The available flower clusters in the pack (Flowers_01.fbx … Flowers_02.fbx). */
-export type FlowerVariant = 1 | 2
-export const FLOWER_VARIANTS: FlowerVariant[] = [1, 2]
 
 // Small foliage like grass — normalize to ~0.4 units tall.
 export function Flowers({
