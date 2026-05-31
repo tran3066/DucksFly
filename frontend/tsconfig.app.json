@@ -16,7 +16,6 @@
     "jsx": "react-jsx",
 
     /* Shared contracts at repo-root types/ (see docs/ARCHITECTURE.md §4) */
-    "baseUrl": ".",
     "paths": {
       "@shared": ["../types/index.ts"],
       "@shared/*": ["../types/*"]

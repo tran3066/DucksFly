@@ -4,11 +4,10 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "lib": ["ES2022"],
-    "baseUrl": ".",
     "paths": {
       "@shared": ["../types/index.ts"],
       "@shared/*": ["../types/*"],
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     },
     "experimentalDecorators": true,
     "useDefineForClassFields": false,
