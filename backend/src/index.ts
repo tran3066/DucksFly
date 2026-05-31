@@ -5,7 +5,7 @@ const port = Number(process.env.PORT ?? 2567);
 createGameServer()
   .listen(port)
   .then(() => {
-    console.log(`DucksFly server listening on ws://localhost:${port}`);
+    console.log(`DucksFly server listening on port ${port} (health: /health)`);
   })
   .catch((err) => {
     console.error("Failed to start DucksFly server:", err);

@@ -17,7 +17,7 @@ npm install        # first time only
 npm run dev        # starts on ws://localhost:2567, restarts on file changes
 ```
 
-You should see: `DucksFly server listening on ws://localhost:2567`.
+You should see: `DucksFly server listening on port 2567 (health: /health)`.
 
 Other backend commands:
 
@@ -94,6 +94,45 @@ new value.
 
 > Note: `localhost` means *your own machine*. Teammates can't reach your `localhost` —
 > use the LAN IP or a tunnel for them to join.
+
+---
+
+## 4. Deploy the server publicly (Railway)
+
+For an always-on server everyone (and the demo) can reach, deploy the backend to
+[Railway](https://railway.com). The repo is already set up for it:
+
+- `backend/railway.json` — tells Railway to build with Nixpacks, run `npm run start`,
+  and healthcheck `GET /health`.
+- The server reads the `PORT` env var (Railway sets this automatically) and exposes
+  `/health`, which returns `{"ok":true}`.
+
+**One-time setup (in the Railway dashboard):**
+
+1. **New Project → Deploy from GitHub repo**, pick this repo.
+2. In the service **Settings → Build**, set **Root Directory** to `backend`.
+   (The repo is a monorepo; this points Railway at the server. The shared `types/`
+   folder at the repo root stays available during the build.)
+3. Railway auto-detects Node + the `railway.json`. Build command and start command
+   come from there; no extra config needed.
+4. **Settings → Networking → Generate Domain.** You'll get a URL like
+   `ducksfly-production.up.railway.app`.
+5. Deploy. When it's healthy, open `https://<your-domain>/health` in a browser — you
+   should see `{"ok":true}`.
+
+**Point the frontend at it.** The Railway domain is HTTPS, so the WebSocket URL is
+`wss://` (not `ws://`) and has **no port**:
+
+```bash
+# frontend/.env.local
+VITE_SERVER_URL=wss://ducksfly-production.up.railway.app
+```
+
+Restart the frontend dev server (or rebuild) after changing this. Now anyone running
+the frontend — anywhere — connects to the same hosted room.
+
+> Prefer the CLI? `npm i -g @railway/cli`, then from `backend/`: `railway login`,
+> `railway init`, `railway up`. Set the service Root Directory to `backend` either way.
 
 ---
 
