@@ -22,15 +22,32 @@ export interface Checkpoint {
   isFinish: boolean;
 }
 
-/** Cosmetic scenery tree. Always placed OUTSIDE the corridor — never blocks flight. */
-export interface TreeDef {
+/** The kinds of nature-pack scenery scattered along the track. */
+export type SceneryKind =
+  | 'tree'
+  | 'bush'
+  | 'rock'
+  | 'grass'
+  | 'flowers'
+  | 'mushroom'
+  | 'stump'
+  | 'branch';
+
+/**
+ * One placed scenery instance. Always OUTSIDE the corridor — purely cosmetic,
+ * never blocks flight. The renderer normalizes each model to `height` meters.
+ */
+export interface SceneryItem {
   id: number;
+  kind: SceneryKind;
+  /** 1-based model variant within the kind (e.g. tree 1..5). */
+  variant: number;
   /** Base position on the ground [x, 0, z]. */
   pos: [number, number, number];
-  /** Overall height (m). */
+  /** Yaw rotation (radians) for per-instance variety. */
+  rotationY: number;
+  /** Target height in meters; the renderer scales each model to match. */
   height: number;
-  /** Foliage radius (m). */
-  radius: number;
 }
 
 /** The fully-built world descriptor produced from a single seed. */
@@ -46,7 +63,7 @@ export interface MapDef {
   floorY: number;
   rings: RingDef[];
   checkpoints: Checkpoint[];
-  trees: TreeDef[];
+  scenery: SceneryItem[];
 }
 
 /** Tunable knobs for the generator. All distances in meters. */

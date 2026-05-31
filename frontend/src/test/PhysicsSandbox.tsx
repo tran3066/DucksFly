@@ -13,7 +13,7 @@ import {
   type PhysicsConfig,
 } from '../physics';
 import { buildMap, ringCrossing, DEFAULT_MAP_CONFIG, type MapDef } from '../map';
-import { DuckMesh } from './DuckMesh';
+import { DuckModel } from './DuckModel';
 import { MapView } from './MapView';
 
 const MAX_FRAME_DT = 0.1; // clamp to avoid spiral-of-death after a stall
@@ -163,7 +163,7 @@ function DuckRig({
     camera.lookAt(lookCurrent.current);
   });
 
-  return <DuckMesh ref={duckRef} />;
+  return <DuckModel ref={duckRef} />;
 }
 
 /** Live numeric readout, polled off the render loop to avoid re-rendering it. */
