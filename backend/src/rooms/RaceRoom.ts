@@ -227,7 +227,9 @@ export class RaceRoom extends Room<{ state: RaceState }> {
   private updateRanks(): void {
     const entries: LeaderboardInput[] = [...this.state.players.values()].map((p) => ({
       id: p.id,
-      ringsPassed: p.ringsPassed,
+      // Proximity to the finish line (world Z, finish at z=length) — updated every pose tick,
+      // so position changes the moment one duck pulls ahead of another, not at ring boundaries.
+      progress: p.pos.z,
       finished: p.finished,
       finishTime: p.finishTime,
     }));
