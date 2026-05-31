@@ -1,6 +1,6 @@
 import { DEFAULT_MAP_CONFIG } from './config';
 import { deriveSeed, makeRng, randRange } from './rng';
-import type { MapConfig, MapDef, RingDef, Checkpoint, TreeDef } from './types';
+import type { MapConfig, MapDef, RingDef, Checkpoint, SceneryItem, SceneryKind } from './types';
 
 /**
  * Build the entire world from one seed. Pure & deterministic: the same
@@ -18,7 +18,7 @@ export function buildMap(seed: number, cfg: MapConfig = DEFAULT_MAP_CONFIG): Map
     floorY: cfg.floorY,
     rings: buildRings(seed, cfg),
     checkpoints: buildCheckpoints(cfg),
-    trees: buildTrees(seed, cfg),
+    scenery: buildScenery(seed, cfg),
   };
 }
 
@@ -35,23 +35,81 @@ function buildRings(seed: number, cfg: MapConfig): RingDef[] {
   return rings;
 }
 
-function buildTrees(seed: number, cfg: MapConfig): TreeDef[] {
-  // Independent stream (salt 0x2) so trees don't shift ring placement.
-  const rng = makeRng(deriveSeed(seed, 0x2));
-  const trees: TreeDef[] = [];
+/**
+ * Per-kind ground-detail scatter spec. `per100m` = items placed per 100 m of
+ * track (across both sides combined). Heights in meters. Each kind draws from
+ * its own seed stream (`salt`) so adding/removing a kind never shifts the others
+ * — nor the rings (salt 0x1) or trees (salt 0x2).
+ */
+interface DetailSpec {
+  kind: SceneryKind;
+  variants: number;
+  per100m: number;
+  minH: number;
+  maxH: number;
+  salt: number;
+}
+
+const DETAIL_SCATTER: DetailSpec[] = [
+  { kind: 'bush', variants: 3, per100m: 3, minH: 2, maxH: 4, salt: 0x3 },
+  { kind: 'rock', variants: 5, per100m: 2, minH: 1, maxH: 3, salt: 0x4 },
+  { kind: 'grass', variants: 2, per100m: 6, minH: 0.6, maxH: 1.2, salt: 0x5 },
+  { kind: 'flowers', variants: 2, per100m: 4, minH: 0.6, maxH: 1.0, salt: 0x6 },
+  { kind: 'mushroom', variants: 2, per100m: 1, minH: 0.4, maxH: 0.8, salt: 0x7 },
+  { kind: 'stump', variants: 1, per100m: 0.5, minH: 1.2, maxH: 2.0, salt: 0x8 },
+  { kind: 'branch', variants: 1, per100m: 0.6, minH: 0.5, maxH: 0.9, salt: 0x9 },
+];
+
+/**
+ * All cosmetic scenery, scattered in the bands OUTSIDE the corridor walls so it
+ * never blocks flight. Trees are placed in structured rows (reads as forward
+ * motion); everything else is scattered randomly through the same bands.
+ */
+function buildScenery(seed: number, cfg: MapConfig): SceneryItem[] {
+  const items: SceneryItem[] = [];
   let id = 0;
+
+  // Trees in rows down both flanks (salt 0x2). Random variant + yaw per tree.
+  const tr = makeRng(deriveSeed(seed, 0x2));
   for (let z = 0; z <= cfg.length; z += cfg.treeRowGap) {
     for (const side of [-1, 1]) {
       for (let i = 0; i < cfg.treesPerRowSide; i++) {
-        // x sits just beyond the wall, out to the band edge; z jittered off the row.
-        const x = side * randRange(rng, cfg.halfWidth + 4, cfg.halfWidth + cfg.treeBandWidth);
-        const zJit = z + randRange(rng, -cfg.treeRowGap * 0.5, cfg.treeRowGap * 0.5);
-        const height = randRange(rng, cfg.treeMinHeight, cfg.treeMaxHeight);
-        trees.push({ id: id++, pos: [x, 0, zJit], height, radius: height * 0.32 });
+        const x = side * randRange(tr, cfg.halfWidth + 4, cfg.halfWidth + cfg.treeBandWidth);
+        const zJit = z + randRange(tr, -cfg.treeRowGap * 0.5, cfg.treeRowGap * 0.5);
+        const height = randRange(tr, cfg.treeMinHeight, cfg.treeMaxHeight);
+        items.push({
+          id: id++,
+          kind: 'tree',
+          variant: 1 + Math.floor(tr() * 5),
+          pos: [x, 0, zJit],
+          rotationY: tr() * Math.PI * 2,
+          height,
+        });
       }
     }
   }
-  return trees;
+
+  // Ground detail (bushes/rocks/grass/flowers/mushrooms/stumps/branches),
+  // randomly scattered through the same outside-the-wall bands.
+  for (const spec of DETAIL_SCATTER) {
+    const rng = makeRng(deriveSeed(seed, spec.salt));
+    const count = Math.round(spec.per100m * (cfg.length / 100));
+    for (let i = 0; i < count; i++) {
+      const side = rng() < 0.5 ? -1 : 1;
+      const x = side * randRange(rng, cfg.halfWidth + 2, cfg.halfWidth + cfg.treeBandWidth);
+      const z = randRange(rng, 0, cfg.length);
+      items.push({
+        id: id++,
+        kind: spec.kind,
+        variant: 1 + Math.floor(rng() * spec.variants),
+        pos: [x, 0, z],
+        rotationY: rng() * Math.PI * 2,
+        height: randRange(rng, spec.minH, spec.maxH),
+      });
+    }
+  }
+
+  return items;
 }
 
 function buildCheckpoints(cfg: MapConfig): Checkpoint[] {

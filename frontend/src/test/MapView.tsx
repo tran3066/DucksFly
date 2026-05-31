@@ -1,6 +1,8 @@
-import { Instance, Instances, Text } from '@react-three/drei';
+import { Suspense } from 'react';
+import { Text } from '@react-three/drei';
 import { DoubleSide } from 'three';
-import type { MapDef, RingDef, TreeDef } from '../map';
+import type { MapDef, RingDef } from '../map';
+import { Scenery } from '../world/Scenery';
 
 /**
  * Placeholder environment renderer for the generation test run. Deliberately
@@ -16,20 +18,26 @@ export function MapView({
 }) {
   const midZ = map.length / 2;
 
+  // Extend the ground out past the furthest scenery so the flanking forest has
+  // something to stand on (scenery is placed in bands beyond the corridor walls).
+  const groundHalfX =
+    map.scenery.reduce((m, s) => Math.max(m, Math.abs(s.pos[0])), map.halfWidth) + 20;
+
   return (
     <group>
-      {/* Single-color floor spanning the whole corridor. */}
+      {/* Ground plane, widened to cover the scenery bands either side. */}
       <mesh position={[0, map.floorY, midZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[map.halfWidth * 2, map.length]} />
+        <planeGeometry args={[groundHalfX * 2, map.length]} />
         <meshStandardMaterial color="#2f5d3a" />
       </mesh>
 
-      {/* Opaque lateral bounce walls (thin tall slabs) at x = +/- halfWidth.
-          Opaque = no alpha-sort flicker as the camera climbs/dives. */}
+      {/* Lateral bounce walls at x = +/- halfWidth. Translucent (with depthWrite
+          off to avoid alpha-sort flicker) so the flanking forest reads through
+          them — a soft boundary tint rather than a brick wall (see plan doc). */}
       {[-1, 1].map((side) => (
         <mesh key={side} position={[side * (map.halfWidth + 0.5), map.ceiling / 2, midZ]}>
           <boxGeometry args={[1, map.ceiling, map.length]} />
-          <meshStandardMaterial color="#8fb8cc" />
+          <meshStandardMaterial color="#8fb8cc" transparent opacity={0.16} depthWrite={false} />
         </mesh>
       ))}
 
@@ -57,49 +65,10 @@ export function MapView({
         <Ring key={ring.id} ring={ring} passed={passedRingIds.has(ring.id)} />
       ))}
 
-      <Trees trees={map.trees} />
-    </group>
-  );
-}
-
-/**
- * Low-poly conifer scenery: a tapered brown trunk + a green cone crown. Rendered
- * with instancing (one draw call per part) so hundreds of trees stay cheap.
- * Heights/radii come per-tree from the seed, so each side reads as varied forest.
- */
-function Trees({ trees }: { trees: TreeDef[] }) {
-  return (
-    <group>
-      <Instances limit={trees.length} castShadow>
-        <cylinderGeometry args={[0.35, 0.6, 1, 6]} />
-        <meshStandardMaterial color="#6b4a2b" />
-        {trees.map((t) => {
-          const trunkH = t.height * 0.4;
-          return (
-            <Instance
-              key={t.id}
-              position={[t.pos[0], trunkH / 2, t.pos[2]]}
-              scale={[1, trunkH, 1]}
-            />
-          );
-        })}
-      </Instances>
-
-      <Instances limit={trees.length} castShadow>
-        <coneGeometry args={[1, 1, 7]} />
-        <meshStandardMaterial color="#2e7d32" />
-        {trees.map((t) => {
-          const trunkH = t.height * 0.4;
-          const crownH = t.height * 0.6;
-          return (
-            <Instance
-              key={t.id}
-              position={[t.pos[0], trunkH + crownH / 2, t.pos[2]]}
-              scale={[t.radius, crownH, t.radius]}
-            />
-          );
-        })}
-      </Instances>
+      {/* Real seed-generated nature-pack scenery, instanced for performance. */}
+      <Suspense fallback={null}>
+        <Scenery map={map} />
+      </Suspense>
     </group>
   );
 }
