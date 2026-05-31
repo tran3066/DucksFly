@@ -32,6 +32,8 @@ import { useInputStore } from '../input/store'
 import { getBaseline, useCalibrationStore } from '../input/calibration'
 import { diveFromArmsDown, type FlapStrategy } from '../input/gestures/flap'
 import { computeLean, type LeanCalib } from '../input/gestures/lean'
+import { detectSixSeven, makeSixSevenState } from '../input/gestures/sixSeven'
+import { playSixSeven, isSixSevenPlaying, playQuack, playRingPass, playRingHit } from './sfx'
 import type { LandmarkFrame } from '../input/fixtures/landmarks'
 import {
   GESTURE_TURN,
@@ -44,6 +46,9 @@ import {
 
 /** Invulnerability window after a respawn, ms (matches the MP spin-out window). */
 const RESPAWN_INVULN_MS = 1200
+/** Suppress the "6-7" gesture for this long after a run (re)starts, so settling out
+ *  of the calibration pose into the flying stance never reads as the gesture. */
+const SIXSEVEN_START_GRACE_MS = 1500
 /** Broad-phase cull: only test trees within this |Δz| of the duck, meters. */
 const TREE_CULL_Z = 8
 
@@ -83,6 +88,9 @@ export interface FlightRigProps {
   onRingPassed?: (ringId: number) => void
   /** Fired when the local duck crashes (tree/ring rim) and respawns; drives the flash. */
   onCrash?: () => void
+  /** Fired once each time the "6-7" two-handed gesture is recognized; drives the
+   *  on-screen "6 7" pop. Gated so it never fires while the 6-7 sound is playing. */
+  onSixSeven?: () => void
 }
 
 export function FlightRig({
@@ -111,6 +119,7 @@ export function FlightRig({
   onRingsChanged,
   onRingPassed,
   onCrash,
+  onSixSeven,
 }: FlightRigProps) {
   const accRef = useRef(0)
   // performance.now() ms until which collisions are ignored (post-respawn grace).
@@ -131,6 +140,18 @@ export function FlightRig({
   const gestureLeanRef = useRef(0)
   const gestureDiveRef = useRef(0)
   const stalePoseTicksRef = useRef(0)
+  // "6-7" easter egg: two-handed wrist alternation. Stateful detector + a one-shot
+  // flag that is true for the single frame the gesture fires (consumed each frame).
+  const sixSevenStateRef = useRef(makeSixSevenState())
+  const egg67ShotRef = useRef(false)
+  // Track the running edge so we can reset the 6-7 detector and start a short grace
+  // window each time the run (re)starts, so the calibration->fly settle motion at
+  // the start of a race never reads as the gesture.
+  const wasRunningRef = useRef(false)
+  const runStartMsRef = useRef(0)
+  // Track the open-mouth state so we play the quack on the rising edge (mouth just
+  // opened), once per open, instead of every frame the mouth is held open.
+  const wasQuackingRef = useRef(false)
 
   useFrame((_, delta) => {
     const cfg = cfgRef.current
@@ -144,6 +165,15 @@ export function FlightRig({
     const calibrating = cameraControl && useCalibrationStore.getState().gateOpen
     const frozen = enableFinish && finishedRef.current
     const running = runningRef.current && !frozen && !calibrating
+
+    // On each run (re)start, reset the 6-7 detector and stamp the start time so the
+    // settle-into-flying motion right after calibration cannot fire a false egg.
+    const now = performance.now()
+    if (running && !wasRunningRef.current) {
+      runStartMsRef.current = now
+      sixSevenStateRef.current = makeSixSevenState()
+    }
+    wasRunningRef.current = running
 
     if (running) {
       accRef.current += Math.min(delta, MAX_FRAME_DT)
@@ -185,6 +215,19 @@ export function FlightRig({
           // Body-driven dive: dropping both arms below the shoulders noses down.
           const rawDive = diveFromArmsDown(poseFrame, GESTURE_DIVE.startBelow, GESTURE_DIVE.fullBelow)
           gestureDiveRef.current += GESTURE_DIVE.smoothing * (rawDive - gestureDiveRef.current)
+          // "6-7" easter egg: both hands (in front, elbows bent) alternating up/down
+          // in opposite phase. On a detected bout, gate on the sound NOT already
+          // playing so repeated moves never overlap or queue: one egg + sound + pop
+          // plays fully before another can start. Uses pose wrists (no extra model).
+          if (
+            now - runStartMsRef.current >= SIXSEVEN_START_GRACE_MS &&
+            detectSixSeven(sixSevenStateRef.current, poseFrame, now) &&
+            !isSixSevenPlaying()
+          ) {
+            egg67ShotRef.current = true
+            playSixSeven()
+            onSixSeven?.()
+          }
         } else {
           // No new pose this tick. A short gap is just MediaPipe between detections,
           // but a SUSTAINED gap means the body left the frame, so zero the gesture
@@ -195,6 +238,7 @@ export function FlightRig({
             gestureLeanRef.current = 0
             gestureDiveRef.current = 0
             flapStrategyRef.current.reset()
+            sixSevenStateRef.current = makeSixSevenState()
           }
         }
       }
@@ -209,16 +253,21 @@ export function FlightRig({
       const gLean = cameraControl ? gestureLeanRef.current : 0
       const gDive = cameraControl ? gestureDiveRef.current : 0
       const gQuack = cameraControl && useInputStore.getState().jawOpen > QUACK_THRESHOLD
+      // Rising edge of the open mouth -> play the quack once. playSfx skips while it
+      // is still playing, so holding the mouth open or rapid quacks never overlap.
+      if (gQuack && !wasQuackingRef.current) playQuack()
+      wasQuackingRef.current = gQuack
       const merged: DuckActions = {
         flap: Math.min(1, base.flap + k.flap + gFlap),
         flapImpulse: false,
         lean: Math.max(-1, Math.min(1, base.lean + k.lean + gLean)),
         dive: Math.min(1, base.dive + k.dive + gDive),
         quack: base.quack || gQuack,
-        egg67: base.egg67,
+        egg67: base.egg67 || egg67ShotRef.current,
         confidence: base.confidence,
       }
       mergedRef.current = merged
+      egg67ShotRef.current = false // one-shot consumed: egg67 is true for exactly one frame
 
       const rings = mapRef.current.rings
       const scenery = mapRef.current.scenery
@@ -258,6 +307,7 @@ export function FlightRig({
             boostRef.current = Math.max(boostRef.current, boostSpeedRef.current)
             ringsChanged = true
             onRingPassed?.(ring.id)
+            playRingPass() // bright "collect" chime on a clean fly-through
           }
         }
 
@@ -275,6 +325,7 @@ export function FlightRig({
             if (passedRingsRef.current.has(ring.id)) continue
             if (ringRimHit(prevZ, s2.position[2], s2.position[0], s2.position[1], ring, duckRadius)) {
               crashed = true
+              playRingHit() // soft bounce: clipped the rim instead of the hole
             }
           }
 

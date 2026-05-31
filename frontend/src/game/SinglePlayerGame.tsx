@@ -20,6 +20,8 @@ import { FLAP_ANIM_SPEED } from './gestureConfig'
 import { FlightScene } from './FlightScene'
 import type { FlightRigProps } from './FlightRig'
 import { CrashFlash } from './CrashFlash'
+import { SixSevenOverlay } from './SixSevenOverlay'
+import { startMusic, stopMusic, playFinish } from './sfx'
 import { ControlModeToggle, type ControlMode } from './ModeChooser'
 import { useCalibrationStore } from '../input/calibration'
 import {
@@ -49,6 +51,13 @@ export function SinglePlayerGame({
   // Single-player: recalibrating is always fine (it just freezes this one duck).
   useEffect(() => {
     useCalibrationStore.getState().setRecalibrateAllowed(true)
+  }, [])
+  // Race music: single-player flies from mount, so start the loop here and stop it
+  // when leaving. The finish stops it (onFinish) and "Fly again" restarts it
+  // (resetState).
+  useEffect(() => {
+    startMusic()
+    return () => stopMusic()
   }, [])
   const stateRef = useRef<DuckState>(createFlightState())
   const actionsRef = useRef<DuckActions>({ ...makeIdleActions(), confidence: 1 }) // slider baseline
@@ -84,9 +93,15 @@ export function SinglePlayerGame({
       distance: stateRef.current.distance,
     })
     setFinished(true)
+    stopMusic() // race over: stop the loop at the finish line
+    playFinish() // ...and celebrate the crossing
   }, [])
   const [crashAt, setCrashAt] = useState(0)
   const onCrash = useCallback(() => setCrashAt(performance.now()), [])
+  // "6-7" gesture pop: a counter the rig bumps on each detection; the overlay
+  // replays its animation when it changes.
+  const [sixSevenCount, setSixSevenCount] = useState(0)
+  const onSixSeven = useCallback(() => setSixSevenCount((n) => n + 1), [])
 
   const fireImpulse = useCallback(() => {
     impulseRef.current = true
@@ -102,6 +117,7 @@ export function SinglePlayerGame({
     setFinishStats(null)
     setPassedRingIds(new Set())
     setRingPulseAt(new Map())
+    startMusic() // (re)start the loop for the fresh run / new seed
   }, [])
 
   const keyRef = useKeyboardControls(true, fireImpulse)
@@ -247,6 +263,7 @@ export function SinglePlayerGame({
     boostDurationRef,
     onRingsChanged: syncRings,
     onCrash,
+    onSixSeven,
   }
 
   return (
@@ -285,6 +302,7 @@ export function SinglePlayerGame({
       />
       {onExit && <ExitButton onExit={onExit} />}
       <CrashFlash at={crashAt} />
+      <SixSevenOverlay trigger={sixSevenCount} />
       {finished && finishStats && (
         <FinishOverlay stats={finishStats} onReset={resetState} onExit={onExit} />
       )}
