@@ -19,7 +19,7 @@ import type { PlayerView, RaceSnapshot } from "./types";
  * deployed host without code changes (see backend/HowToRun.md).
  */
 
-const DEFAULT_SERVER_URL = "ws://localhost:2567";
+const DEFAULT_SERVER_URL = "wss://ducksfly.fly.dev";
 
 export const SERVER_URL: string =
   (import.meta.env.VITE_SERVER_URL as string | undefined) ?? DEFAULT_SERVER_URL;
