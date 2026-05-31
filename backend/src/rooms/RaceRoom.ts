@@ -5,6 +5,9 @@ import {
   COUNTDOWN_MS,
   SERVER_TICK_HZ,
   COLLISION_RADIUS,
+  FINISH_GRACE_MS,
+  SPINOUT_RECOVERY_MS,
+  LOBBY_CODE_LENGTH,
 } from "@shared/constants";
 import {
   ClientMessage,
@@ -34,6 +37,18 @@ const DEFAULT_TOTAL_LAPS = 1;
 /** Distance between adjacent spawn slots, world units (> COLLISION_RADIUS). */
 const SPAWN_SPACING = 5;
 
+/** Unambiguous alphabet for invite codes (no 0/O/1/I/L to avoid mis-typing). */
+const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+
+/** Generate a short, human-friendly lobby code (e.g. "K7QF"). */
+function generateLobbyCode(length: number = LOBBY_CODE_LENGTH): string {
+  let code = "";
+  for (let i = 0; i < length; i++) {
+    code += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
+  }
+  return code;
+}
+
 /** Room creation options. The `*Ms`/count/laps fields exist so tests can run fast. */
 interface RaceRoomOptions {
   countdownMs?: number;
@@ -41,6 +56,8 @@ interface RaceRoomOptions {
   totalLaps?: number;
   raceDurationMs?: number;
   seed?: number;
+  /** Invite code (the matchmaking filterBy key); host-generated, falls back if absent. */
+  code?: string;
 }
 
 /**
@@ -53,6 +70,8 @@ export class RaceRoom extends Room<{ state: RaceState }> {
   maxClients = MAX_PLAYERS;
 
   private readonly progress = new Map<string, RingProgress>();
+  /** Per-player epoch ms until which a collided player stays spun out. */
+  private readonly spinOutUntil = new Map<string, number>();
   private hostId: string | undefined;
   private startRequested = false;
   private countdownMs = COUNTDOWN_MS;
@@ -60,30 +79,39 @@ export class RaceRoom extends Room<{ state: RaceState }> {
   private ringsPerLap = DEFAULT_RING_COUNT;
   private raceDurationMs = DEFAULT_RACE_DURATION_MS;
   private raceDeadline = 0;
+  /** Epoch ms the first player finished this race (0 if nobody has yet). */
+  private firstFinishAt = 0;
 
   onCreate(options: RaceRoomOptions = {}): void {
     this.countdownMs = options.countdownMs ?? COUNTDOWN_MS;
     this.totalLaps = options.totalLaps ?? DEFAULT_TOTAL_LAPS;
     this.raceDurationMs = options.raceDurationMs ?? DEFAULT_RACE_DURATION_MS;
-    const ringCount = options.ringCount ?? DEFAULT_RING_COUNT;
-    this.ringsPerLap = ringCount;
+    this.ringsPerLap = options.ringCount ?? DEFAULT_RING_COUNT;
 
     const state = new RaceState();
     state.phase = "lobby";
+    // The host passes the invite code (also the matchmaking filterBy key). Fall back to a
+    // server-generated one so a room always has a code even if created without options.
+    state.code = options.code ?? generateLobbyCode();
     state.mapSeed = options.seed ?? Math.floor(Math.random() * 0xffffffff);
+    this.setState(state);
+    this.buildRings(state.mapSeed);
 
-    for (const ring of generateRingLayout(state.mapSeed, ringCount)) {
+    this.registerMessageHandlers();
+    this.setSimulationInterval(() => this.tick(), 1000 / SERVER_TICK_HZ);
+  }
+
+  /** Regenerate the ring layout for a seed, replacing any existing rings. */
+  private buildRings(seed: number): void {
+    this.state.ringLayout.clear();
+    for (const ring of generateRingLayout(seed, this.ringsPerLap)) {
       const r = new RingSchema();
       r.id = ring.id;
       r.pos.set(ring.pos[0], ring.pos[1], ring.pos[2]);
       r.quat.set(ring.quat[0], ring.quat[1], ring.quat[2], ring.quat[3]);
       r.radius = ring.radius;
-      state.ringLayout.push(r);
+      this.state.ringLayout.push(r);
     }
-    this.setState(state);
-
-    this.registerMessageHandlers();
-    this.setSimulationInterval(() => this.tick(), 1000 / SERVER_TICK_HZ);
   }
 
   onJoin(client: Client, options: JoinOptions = {} as JoinOptions): void {
@@ -105,6 +133,7 @@ export class RaceRoom extends Room<{ state: RaceState }> {
   onLeave(client: Client): void {
     this.state.players.delete(client.sessionId);
     this.progress.delete(client.sessionId);
+    this.spinOutUntil.delete(client.sessionId);
 
     if (client.sessionId === this.hostId) {
       const next = this.state.players.keys().next();
@@ -134,6 +163,14 @@ export class RaceRoom extends Room<{ state: RaceState }> {
       }
     });
 
+    this.onMessage(ClientMessage.PlayAgain, () => {
+      // Rematch: any player may send it, but it only does anything once, from the
+      // results screen. Resets THIS room (same players + code) back to the lobby.
+      if (this.state.phase === "finished") {
+        this.resetToLobby();
+      }
+    });
+
     this.onMessage(ClientMessage.RingPassed, (client, msg: RingPassedPayload) => {
       if (this.state.phase !== "racing") return;
       const player = this.state.players.get(client.sessionId);
@@ -150,6 +187,11 @@ export class RaceRoom extends Room<{ state: RaceState }> {
       player.ringsPassed = result.progress.ringsPassed;
       player.lap = result.progress.lap;
       player.finished = result.progress.finished;
+      player.finishTime = result.progress.finishTime;
+      // Start the finish-grace clock the moment the first player crosses the line.
+      if (player.finished && this.firstFinishAt === 0) {
+        this.firstFinishAt = result.progress.finishTime;
+      }
       this.updateRanks();
     });
   }
@@ -168,6 +210,7 @@ export class RaceRoom extends Room<{ state: RaceState }> {
       countdownEndsAt: this.state.countdownEndsAt,
       allFinished,
       raceDeadline: this.raceDeadline,
+      finishWindowDeadline: this.firstFinishAt > 0 ? this.firstFinishAt + FINISH_GRACE_MS : 0,
     };
 
     const desired = nextPhase(current, inputs);
@@ -176,7 +219,8 @@ export class RaceRoom extends Room<{ state: RaceState }> {
     }
 
     if (this.state.phase === "racing") {
-      this.runCollisions();
+      this.recoverSpinOuts(now);
+      this.runCollisions(now);
     }
   }
 
@@ -184,14 +228,30 @@ export class RaceRoom extends Room<{ state: RaceState }> {
     if (phase === "countdown") {
       this.state.countdownEndsAt = now + this.countdownMs;
       this.startRequested = false;
+      // No late joins once a race is underway.
+      void this.lock();
     } else if (phase === "racing") {
       this.state.countdownEndsAt = 0;
+      this.state.raceStartAt = now;
       this.raceDeadline = now + this.raceDurationMs;
+      this.firstFinishAt = 0;
+      this.spinOutUntil.clear();
     }
     this.state.phase = phase;
   }
 
-  private runCollisions(): void {
+  /** Clear the spun-out flag once a collided player's recovery window has elapsed. */
+  private recoverSpinOuts(now: number): void {
+    for (const [id, until] of this.spinOutUntil) {
+      if (now >= until) {
+        const player = this.state.players.get(id);
+        if (player) player.spunOut = false;
+        this.spinOutUntil.delete(id);
+      }
+    }
+  }
+
+  private runCollisions(now: number): void {
     const bodies: CollisionBody[] = [...this.state.players.values()].map((p) => ({
       id: p.id,
       pos: [p.pos.x, p.pos.y, p.pos.z],
@@ -202,9 +262,45 @@ export class RaceRoom extends Room<{ state: RaceState }> {
       const player = this.state.players.get(id);
       if (player && !player.spunOut) {
         player.spunOut = true;
+        player.collisions += 1;
+        this.spinOutUntil.set(id, now + SPINOUT_RECOVERY_MS);
         this.broadcast(ServerMessage.SpinOut, { playerId: id } satisfies SpinOutPayload);
       }
     }
+  }
+
+  /** Rematch: reset this room (keeping players, host, and code) back to the lobby. */
+  private resetToLobby(): void {
+    this.state.mapSeed = Math.floor(Math.random() * 0xffffffff);
+    this.buildRings(this.state.mapSeed);
+
+    this.state.countdownEndsAt = 0;
+    this.state.raceStartAt = 0;
+    this.startRequested = false;
+    this.firstFinishAt = 0;
+    this.raceDeadline = 0;
+    this.spinOutUntil.clear();
+
+    let slot = 0;
+    this.state.players.forEach((player, id) => {
+      player.pos.set(slot * SPAWN_SPACING, 10, 0);
+      player.vel.set(0, 0, 0);
+      player.quat.set(0, 0, 0, 1);
+      player.ringsPassed = 0;
+      player.lap = 0;
+      player.rank = 0;
+      player.spunOut = false;
+      player.finished = false;
+      player.finishTime = 0;
+      player.collisions = 0;
+      player.ready = false;
+      this.progress.set(id, initialProgress());
+      slot++;
+    });
+
+    this.state.phase = "lobby";
+    // Re-open the lobby so latecomers with the code can still join.
+    void this.unlock();
   }
 
   private updateRanks(): void {

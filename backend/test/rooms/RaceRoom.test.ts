@@ -102,6 +102,14 @@ describe("RaceRoom — joining and the lobby", () => {
   });
 });
 
+describe("RaceRoom — invite code", () => {
+  it("generates a short, unambiguous invite code in room state", async () => {
+    const room = await colyseus.createRoom("race");
+    await room.waitForNextPatch();
+    expect(room.state.code).toMatch(/^[A-Z2-9]{4}$/);
+  });
+});
+
 describe("RaceRoom — position relay", () => {
   it("reflects one client's position update into the shared state others see", async () => {
     const room = await colyseus.createRoom("race");
@@ -179,6 +187,69 @@ describe("RaceRoom — collisions", () => {
         room.state.players.get(c1.sessionId).spunOut === true &&
         room.state.players.get(c2.sessionId).spunOut === true,
     );
+  });
+
+  it("counts each collision against the players involved", async () => {
+    const room = await colyseus.createRoom("race", { countdownMs: 40 });
+    const c1 = await colyseus.connectTo(room, alice);
+    const c2 = await colyseus.connectTo(room, bob);
+
+    c1.send(ClientMessage.SetReady, { ready: true });
+    c2.send(ClientMessage.SetReady, { ready: true });
+    c1.send(ClientMessage.StartRace, {});
+    await waitUntil(() => room.state.phase === "racing");
+
+    c1.send(ClientMessage.UpdateState, { pos: [0, 0, 0], vel: [0, 0, 0], quat: [0, 0, 0, 1] });
+    c2.send(ClientMessage.UpdateState, { pos: [0, 0, 0], vel: [0, 0, 0], quat: [0, 0, 0, 1] });
+
+    await waitUntil(
+      () =>
+        room.state.players.get(c1.sessionId).collisions >= 1 &&
+        room.state.players.get(c2.sessionId).collisions >= 1,
+    );
+    expect(room.state.players.get(c1.sessionId).collisions).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("RaceRoom — rematch (play again)", () => {
+  it("resets the same room back to the lobby and clears per-player progress", async () => {
+    const room = await colyseus.createRoom("race", {
+      countdownMs: 40,
+      raceDurationMs: 80,
+      ringCount: 3,
+    });
+    const c1 = await colyseus.connectTo(room, alice);
+    const c2 = await colyseus.connectTo(room, bob);
+
+    c1.send(ClientMessage.SetReady, { ready: true });
+    c2.send(ClientMessage.SetReady, { ready: true });
+    c1.send(ClientMessage.StartRace, {});
+    await waitUntil(() => room.state.phase === "racing");
+
+    c1.send(ClientMessage.RingPassed, { ringId: 0, lap: 0 });
+    await waitUntil(() => room.state.players.get(c1.sessionId).ringsPassed === 1);
+
+    // Race ends on the short duration backstop.
+    await waitUntil(() => room.state.phase === "finished");
+    const codeBefore = room.state.code;
+
+    c1.send(ClientMessage.PlayAgain, {});
+    await waitUntil(() => room.state.phase === "lobby");
+
+    expect(room.state.players.size).toBe(2);
+    expect(room.state.code).toBe(codeBefore); // same room/code preserved
+    expect(room.state.raceStartAt).toBe(0);
+    expect(room.state.countdownEndsAt).toBe(0);
+
+    const p1 = room.state.players.get(c1.sessionId);
+    expect(p1.ringsPassed).toBe(0);
+    expect(p1.finished).toBe(false);
+    expect(p1.finishTime).toBe(0);
+    expect(p1.collisions).toBe(0);
+    expect(p1.ready).toBe(false);
+    expect(p1.rank).toBe(0);
+    // A fresh course is rolled (layout regenerated for the new seed).
+    expect(room.state.ringLayout.length).toBe(3);
   });
 });
 

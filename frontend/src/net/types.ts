@@ -33,6 +33,10 @@ export interface PlayerView {
   spunOut: boolean;
   finished: boolean;
   ready: boolean;
+  /** Player-vs-player collisions this race (display only — never affects rank). */
+  collisions: number;
+  /** Epoch ms the player finished, or 0 if not finished. */
+  finishTime: number;
 }
 
 /** Connection lifecycle for the UI to branch on. */
@@ -45,10 +49,14 @@ export interface RaceSnapshot {
   /** Our own session id once connected. */
   sessionId?: string;
   phase: RacePhase;
+  /** Invite code for the current lobby (shareable), "" before connecting. */
+  code: string;
   mapSeed: number;
   /** Number of rings on the course (one lap = this many rings, in order). */
   ringCount: number;
   countdownEndsAt: number;
+  /** Epoch ms racing began (0 outside racing/finished); base for elapsed times. */
+  raceStartAt: number;
   hostId: string;
   players: PlayerView[];
 }

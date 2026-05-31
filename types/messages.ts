@@ -10,6 +10,11 @@ import type { Vec3, Quat, DuckVariant } from "./network";
 export interface JoinOptions {
   name: string;
   duckVariant: DuckVariant;
+  /**
+   * Invite code for the lobby. The host generates one when creating a room; joiners pass
+   * the same code so matchmaking (filterBy "code") routes them to that exact room.
+   */
+  code?: string;
 }
 
 /** Messages sent from a client to the server. */
@@ -22,6 +27,8 @@ export const ClientMessage = {
   SetReady: "setReady",
   /** Host asks to start the race (lobby -> countdown). */
   StartRace: "startRace",
+  /** From the results screen: reset this same room back to the lobby for a rematch. */
+  PlayAgain: "playAgain",
   /** Player quacked (stretch). */
   Quack: "quack",
 } as const;

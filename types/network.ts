@@ -54,6 +54,14 @@ export interface PlayerState {
   rank: number;
   /** True while the player is spun out from a collision (server-authoritative). */
   spunOut: boolean;
+  /** True once the player has passed every ring (crossed the finish). */
+  finished: boolean;
+  /** Lobby ready flag. */
+  ready: boolean;
+  /** How many player-vs-player collisions this player has had this race (info only). */
+  collisions: number;
+  /** Epoch ms the player finished, or 0 if not finished. Elapsed = finishTime - raceStartAt. */
+  finishTime: number;
 }
 
 /**
@@ -63,11 +71,17 @@ export interface PlayerState {
  */
 export interface RaceRoomState {
   phase: RacePhase;
+  /** Short, server-generated invite code for this lobby (e.g. "K7QF"). */
+  code: string;
   /** One number that lets every client build the same world (docs/ARCHITECTURE.md §6). */
   mapSeed: number;
   /** Where the rings are, sent once when you join. */
   ringLayout: RingDef[];
   /** Epoch ms when the countdown ends and racing begins (0 outside countdown). */
   countdownEndsAt: number;
+  /** Epoch ms when racing began (0 outside racing/finished); the base for elapsed times. */
+  raceStartAt: number;
+  /** sessionId of the host (the only player allowed to start); "" if the room is empty. */
+  hostId: string;
   players: Record<string, PlayerState>;
 }

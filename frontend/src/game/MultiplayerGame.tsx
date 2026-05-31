@@ -24,19 +24,29 @@ import type { FlightRigProps } from './FlightRig'
 import { CrashFlash } from './CrashFlash'
 import { RemoteDucks } from './RemoteDuck'
 import { raceConnection } from '../net/connection'
-import { getServerUrl } from '../net/serverConfig'
 import { ServerPicker } from '../net/ServerPicker'
 import { useRace, isHost } from '../net/useRace'
 import type { PlayerView, RaceSnapshot } from '../net/types'
+import { getProfile, saveProfile } from '../net/profile'
+import { getInitialRoomCode, normalizeCode, buildShareLink, CODE_LENGTH } from '../net/lobbyCode'
 import { POSITION_SEND_HZ } from '@shared/constants'
-import '../test/test.css'
+import {
+  Overlay,
+  Panel,
+  Button,
+  TextInput,
+  KeyCap,
+  formatTime,
+  COLORS,
+  FONT,
+  MONO,
+  UI_KEYFRAMES,
+} from './ui'
 
 /** Mirrors backend MIN_PLAYERS_TO_START (src/logic/stateMachine.ts). */
 const MIN_PLAYERS_TO_START = 2
 /** Mirrors backend SPAWN_SPACING (src/rooms/RaceRoom.ts) so local spawn matches. */
 const SPAWN_SPACING = 5
-
-const randomName = () => `Duck-${Math.floor(1000 + Math.random() * 9000)}`
 
 /** Spawn the local duck at the server-assigned slot (spread along +X). */
 function spawnState(playerIndex: number): DuckState {
@@ -110,6 +120,7 @@ export function MultiplayerGame({ onExit }: { onExit?: () => void }) {
     if (race.phase !== 'racing') return
     const index = Math.max(0, playersRef.current.findIndex((p) => p.id === sessionIdRef.current))
     stateRef.current = spawnState(index)
+    finishedRef.current = false
     passedRingsRef.current = new Set()
     ringPulseAtRef.current = new Map()
     boostRef.current = 0
@@ -185,7 +196,8 @@ export function MultiplayerGame({ onExit }: { onExit?: () => void }) {
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0 }}>
+    <div style={{ position: 'fixed', inset: 0, fontFamily: FONT }}>
+      <style>{UI_KEYFRAMES}</style>
       <FlightScene
         map={map}
         startCam={startCam}
@@ -201,14 +213,121 @@ export function MultiplayerGame({ onExit }: { onExit?: () => void }) {
 
       {race.phase === 'racing' && <RaceHud race={race} self={self} spinning={spinning} />}
       {race.phase === 'countdown' && <Countdown endsAt={race.countdownEndsAt} />}
-      {(!connected || race.phase === 'lobby') && <Lobby race={race} self={self} onExit={onExit} />}
-      {race.phase === 'finished' && <Results race={race} />}
+      {!connected && <Connect race={race} onExit={onExit} />}
+      {connected && race.phase === 'lobby' && <Lobby race={race} self={self} onExit={onExit} />}
+      {connected && race.phase === 'finished' && <Results race={race} self={self} onExit={onExit} />}
       {race.phase === 'racing' && <ControlsLegend />}
     </div>
   )
 }
 
-/** Lobby / join overlay. Reuses the harness styles from test.css. */
+/** Pre-connection screen: pick a name + duck, then host or join a lobby by code. */
+function Connect({ race, onExit }: { race: RaceSnapshot; onExit?: () => void }) {
+  const profile = useMemo(getProfile, [])
+  const initialCode = useMemo(getInitialRoomCode, [])
+  const [name, setName] = useState(profile.name)
+  const [variant, setVariant] = useState<DuckVariant>(profile.variant)
+  const [mode, setMode] = useState<'host' | 'join'>(initialCode ? 'join' : 'host')
+  const [code, setCode] = useState(initialCode)
+  const [showAdvanced, setShowAdvanced] = useState(false)
+
+  const connecting = race.status === 'connecting'
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    const finalName = name.trim() || profile.name
+    saveProfile({ name: finalName, variant })
+    if (mode === 'host') {
+      void raceConnection.host({ name: finalName, duckVariant: variant })
+    } else {
+      const c = normalizeCode(code)
+      if (c.length < CODE_LENGTH) return
+      void raceConnection.joinByCode(c, { name: finalName, duckVariant: variant })
+    }
+  }
+
+  return (
+    <Overlay>
+      <Panel width={440}>
+        <h1 style={titleStyle}>
+          <span style={{ fontSize: '1.6rem' }}>🦆</span> Multiplayer
+        </h1>
+        <p style={subStyle}>Race other ducks live through the same sky.</p>
+
+        <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <Field label="Your name">
+            <TextInput value={name} onChange={setName} placeholder="name" maxLength={16} />
+          </Field>
+
+          <Field label="Duck">
+            <Segmented
+              options={[
+                { id: 'male', label: 'Male' },
+                { id: 'female', label: 'Female' },
+              ]}
+              value={variant}
+              onChange={(v) => setVariant(v as DuckVariant)}
+            />
+          </Field>
+
+          <Segmented
+            options={[
+              { id: 'host', label: 'Host a lobby' },
+              { id: 'join', label: 'Join a lobby' },
+            ]}
+            value={mode}
+            onChange={(v) => setMode(v as 'host' | 'join')}
+          />
+
+          {mode === 'join' && (
+            <Field label="Invite code">
+              <TextInput
+                value={code}
+                onChange={(v) => setCode(normalizeCode(v))}
+                placeholder="ABCD"
+                uppercase
+                maxLength={CODE_LENGTH}
+              />
+            </Field>
+          )}
+
+          <Button
+            type="submit"
+            variant="primary"
+            accent={mode === 'host' ? COLORS.accentBlue : COLORS.accent}
+            disabled={connecting || (mode === 'join' && normalizeCode(code).length < CODE_LENGTH)}
+            style={{ marginTop: 4 }}
+          >
+            {connecting ? 'Connecting…' : mode === 'host' ? 'Create lobby' : 'Join lobby'}
+          </Button>
+
+          {race.status === 'error' && race.error && (
+            <div style={{ color: COLORS.bad, fontSize: '0.85rem' }}>{race.error}</div>
+          )}
+        </form>
+
+        <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
+          {onExit && (
+            <Button variant="ghost" onClick={onExit} style={{ padding: '8px 14px' }}>
+              ← Menu
+            </Button>
+          )}
+          <button type="button" onClick={() => setShowAdvanced((s) => !s)} style={linkStyle}>
+            {showAdvanced ? 'Hide server' : 'Server settings'}
+          </button>
+        </div>
+
+        {showAdvanced && (
+          <div style={{ marginTop: 12 }}>
+            <ServerPicker disabled={connecting} />
+          </div>
+        )}
+      </Panel>
+    </Overlay>
+  )
+}
+
+/** Connected lobby: show the invite code + share link, the roster, and start controls. */
 function Lobby({
   race,
   self,
@@ -218,94 +337,113 @@ function Lobby({
   self?: PlayerView
   onExit?: () => void
 }) {
-  const [name, setName] = useState(randomName)
-  const [variant, setVariant] = useState<DuckVariant>('male')
-  const connected = race.status === 'connected'
   const canStart =
     isHost(race) && race.phase === 'lobby' && race.players.length >= MIN_PLAYERS_TO_START
+  const [copied, setCopied] = useState<'code' | 'link' | null>(null)
 
-  const join = (e: FormEvent) => {
-    e.preventDefault()
-    void raceConnection.join({ name: name.trim() || randomName(), duckVariant: variant })
+  const copy = async (what: 'code' | 'link') => {
+    const text = what === 'code' ? race.code : buildShareLink(race.code)
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(what)
+      window.setTimeout(() => setCopied(null), 1400)
+    } catch {
+      setCopied(null)
+    }
   }
 
   return (
-    <div style={overlayStyle}>
-      <div style={panelStyle}>
-        <h1 style={{ fontSize: '1.3rem', margin: '0 0 4px' }}>🦆 DucksFly · Race</h1>
-        <p className="tip" style={{ margin: '0 0 12px' }}>
-          server <code>{getServerUrl()}</code> · status{' '}
-          <b className={`st-${race.status}`}>{race.status}</b>
+    <Overlay>
+      <Panel width={480}>
+        <h1 style={titleStyle}>
+          <span style={{ fontSize: '1.4rem' }}>🦆</span> Lobby
+        </h1>
+
+        <div style={codeBox}>
+          <div>
+            <div style={{ color: COLORS.dim, fontSize: '0.75rem', letterSpacing: 1 }}>
+              INVITE CODE
+            </div>
+            <div
+              style={{
+                fontFamily: MONO,
+                fontSize: '2rem',
+                fontWeight: 700,
+                letterSpacing: 8,
+                color: COLORS.gold,
+              }}
+            >
+              {race.code || '····'}
+            </div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <Button onClick={() => copy('code')} style={{ padding: '7px 12px', fontSize: '0.85rem' }}>
+              {copied === 'code' ? 'Copied!' : 'Copy code'}
+            </Button>
+            <Button onClick={() => copy('link')} style={{ padding: '7px 12px', fontSize: '0.85rem' }}>
+              {copied === 'link' ? 'Copied!' : 'Copy link'}
+            </Button>
+          </div>
+        </div>
+
+        <RosterTable race={race} />
+
+        <p style={{ color: COLORS.faint, fontSize: '0.8rem', margin: '10px 0 16px' }}>
+          {race.players.length} player{race.players.length === 1 ? '' : 's'} · need{' '}
+          {MIN_PLAYERS_TO_START}+ to start · {race.ringCount} rings
         </p>
 
-        {!connected ? (
-          <form className="join" onSubmit={join} style={{ marginTop: 0 }}>
-            <ServerPicker disabled={race.status === 'connecting'} />
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="name" />
-            <select value={variant} onChange={(e) => setVariant(e.target.value as DuckVariant)}>
-              <option value="male">male</option>
-              <option value="female">female</option>
-            </select>
-            <button type="submit" disabled={race.status === 'connecting'}>
-              {race.status === 'connecting' ? 'connecting…' : 'Join race'}
-            </button>
-            {race.status === 'error' && <span className="err">{race.error}</span>}
-            <p className="tip" style={{ width: '100%' }}>
-              Open this page in several tabs to add players ({MIN_PLAYERS_TO_START}+ to start).
-            </p>
-            {onExit && (
-              <button type="button" className="leave" onClick={onExit}>
-                ← menu
-              </button>
-            )}
-          </form>
-        ) : (
-          <>
-            <div className="actions" style={{ marginTop: 0 }}>
-              <button onClick={() => raceConnection.setReady(!self?.ready)}>
-                {self?.ready ? 'Unready' : 'Ready up'}
-              </button>
-              <button disabled={!canStart} onClick={() => raceConnection.startRace()}>
-                {isHost(race) ? 'Start race' : 'Host starts'}
-              </button>
-              <button className="leave" onClick={() => raceConnection.leave()}>
-                Leave
-              </button>
-            </div>
-            <PlayerTable race={race} />
-            <p className="tip">
-              {race.players.length} player(s) · need {MIN_PLAYERS_TO_START}+ · seed{' '}
-              {race.mapSeed} · {race.ringCount} rings
-            </p>
-          </>
-        )}
-      </div>
-    </div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <Button
+            variant={self?.ready ? 'ghost' : 'primary'}
+            accent={COLORS.good}
+            onClick={() => raceConnection.setReady(!self?.ready)}
+          >
+            {self?.ready ? 'Unready' : 'Ready up'}
+          </Button>
+          <Button
+            variant="primary"
+            accent={COLORS.accent}
+            disabled={!canStart}
+            onClick={() => raceConnection.startRace()}
+          >
+            {isHost(race) ? 'Start race' : 'Host starts'}
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => (onExit ? onExit() : raceConnection.leave())}
+            style={{ marginLeft: 'auto' }}
+          >
+            Leave
+          </Button>
+        </div>
+      </Panel>
+    </Overlay>
   )
 }
 
-function PlayerTable({ race }: { race: RaceSnapshot }) {
+function RosterTable({ race }: { race: RaceSnapshot }) {
   return (
-    <table className="players" style={{ margin: '8px 0' }}>
+    <table style={tableStyle}>
       <thead>
         <tr>
-          <th>name</th>
-          <th>duck</th>
-          <th>ready</th>
-          <th>rings</th>
+          <Th>Player</Th>
+          <Th>Duck</Th>
+          <Th center>Ready</Th>
         </tr>
       </thead>
       <tbody>
         {race.players.map((p) => (
-          <tr key={p.id} className={p.id === race.sessionId ? 'me' : ''}>
-            <td>
+          <tr key={p.id} style={p.id === race.sessionId ? rowMe : undefined}>
+            <Td>
               {p.name}
               {p.id === race.sessionId ? ' (you)' : ''}
-              {p.id === race.hostId ? ' 👑' : ''}
-            </td>
-            <td>{p.duckVariant}</td>
-            <td>{p.ready ? '✓' : ''}</td>
-            <td>{p.ringsPassed}</td>
+              {p.id === race.hostId ? ' · host' : ''}
+            </Td>
+            <Td style={{ color: COLORS.dim }}>{p.duckVariant}</Td>
+            <Td center>
+              {p.ready ? <span style={{ color: COLORS.good }}>ready</span> : <span style={{ color: COLORS.faint }}>—</span>}
+            </Td>
           </tr>
         ))}
       </tbody>
@@ -323,15 +461,25 @@ function Countdown({ endsAt }: { endsAt: number }) {
     return () => window.clearInterval(id)
   }, [endsAt])
   return (
-    <div style={{ ...overlayStyle, pointerEvents: 'none' }}>
-      <div style={{ fontSize: '8rem', fontWeight: 700, textShadow: '0 4px 24px rgba(0,0,0,0.6)' }}>
+    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+      <div
+        key={secs}
+        style={{
+          fontFamily: FONT,
+          fontSize: '9rem',
+          fontWeight: 800,
+          color: secs > 0 ? COLORS.text : COLORS.good,
+          textShadow: '0 6px 30px rgba(0,0,0,0.6)',
+          animation: 'ducksfly-pop 0.4s ease both',
+        }}
+      >
         {secs > 0 ? secs : 'GO!'}
       </div>
     </div>
   )
 }
 
-/** In-race HUD: own telemetry + a compact live leaderboard. */
+/** In-race HUD: own telemetry + a compact live leaderboard + race clock. */
 function RaceHud({
   race,
   self,
@@ -347,33 +495,30 @@ function RaceHud({
     return () => clearInterval(id)
   }, [])
   const ranked = [...race.players].sort((a, b) => (a.rank || 99) - (b.rank || 99))
+  const elapsed = race.raceStartAt > 0 ? Date.now() - race.raceStartAt : 0
+
   return (
     <>
-      <div style={{ ...hudPanel, top: 12, left: 12, minWidth: 180 }}>
-        <div style={hudRow}>
-          <span style={{ opacity: 0.7 }}>rings</span>
-          <span>
-            {self?.ringsPassed ?? 0} / {race.ringCount}
-          </span>
-        </div>
-        <div style={hudRow}>
-          <span style={{ opacity: 0.7 }}>rank</span>
-          <span>
-            {self?.rank || '-'} / {race.players.length}
-          </span>
-        </div>
-        {self?.finished && <div style={{ color: '#79e58a', marginTop: 4 }}>FINISHED 🏁</div>}
-        {spinning && <div style={{ color: '#ff8a8a', marginTop: 4 }}>SPUN OUT 💫</div>}
+      <div style={{ ...hudPanel, top: 14, left: 14, minWidth: 170 }}>
+        <HudRow label="time" value={formatTime(elapsed)} />
+        <HudRow label="rings" value={`${self?.ringsPassed ?? 0} / ${race.ringCount}`} />
+        <HudRow label="rank" value={`${self?.rank || '–'} / ${race.players.length}`} />
+        {self?.finished && <div style={{ color: COLORS.good, marginTop: 6 }}>FINISHED</div>}
+        {spinning && <div style={{ color: COLORS.bad, marginTop: 6 }}>SPUN OUT</div>}
       </div>
 
-      <div style={{ ...hudPanel, top: 12, right: 12, minWidth: 170 }}>
-        <div style={{ opacity: 0.7, marginBottom: 4 }}>leaderboard</div>
+      <div style={{ ...hudPanel, top: 14, right: 14, minWidth: 190 }}>
+        <div style={{ color: COLORS.dim, marginBottom: 6, fontSize: '0.75rem', letterSpacing: 1 }}>
+          LEADERBOARD
+        </div>
         {ranked.map((p) => (
-          <div key={p.id} style={hudRow}>
-            <span style={{ color: p.id === race.sessionId ? '#ffd23f' : undefined }}>
+          <div key={p.id} style={hudRowStyle}>
+            <span style={{ color: p.id === race.sessionId ? COLORS.gold : COLORS.text }}>
               {p.rank || '–'}. {p.name}
             </span>
-            <span>{p.ringsPassed}</span>
+            <span style={{ color: COLORS.dim }}>
+              {p.finished ? '🏁' : `${p.ringsPassed}`}
+            </span>
           </div>
         ))}
       </div>
@@ -381,106 +526,294 @@ function RaceHud({
   )
 }
 
-/** Final standings over the frozen scene. */
-function Results({ race }: { race: RaceSnapshot }) {
-  const ranked = [...race.players].sort((a, b) => (a.rank || 99) - (b.rank || 99))
+/** Final standings over the frozen scene, with a clear winner + rematch. */
+function Results({
+  race,
+  self,
+  onExit,
+}: {
+  race: RaceSnapshot
+  self?: PlayerView
+  onExit?: () => void
+}) {
+  const ranked = [...race.players].sort((a, b) => {
+    if (a.finished !== b.finished) return a.finished ? -1 : 1
+    if (a.finished && b.finished) return a.finishTime - b.finishTime
+    return b.ringsPassed - a.ringsPassed
+  })
+  const winner = ranked.find((p) => p.finished)
+  const youWon = winner && self && winner.id === self.id
+
   return (
-    <div style={overlayStyle}>
-      <div style={panelStyle}>
-        <h1 style={{ fontSize: '1.3rem', margin: '0 0 12px' }}>🏁 Final standings</h1>
-        <table className="players">
+    <Overlay>
+      <Panel width={540}>
+        <h1 style={{ ...titleStyle, justifyContent: 'center' }}>🏁 Race complete</h1>
+
+        <div style={winnerBox}>
+          {winner ? (
+            <>
+              <div style={{ fontSize: '0.8rem', color: COLORS.dim, letterSpacing: 1 }}>WINNER</div>
+              <div style={{ fontSize: '1.7rem', fontWeight: 800, color: COLORS.gold }}>
+                🏆 {winner.name}
+                {youWon ? ' — that\'s you!' : ''}
+              </div>
+            </>
+          ) : (
+            <div style={{ color: COLORS.dim }}>No one crossed the line.</div>
+          )}
+        </div>
+
+        <table style={tableStyle}>
           <thead>
             <tr>
-              <th>#</th>
-              <th>name</th>
-              <th>rings</th>
-              <th>fin</th>
+              <Th center>#</Th>
+              <Th>Player</Th>
+              <Th center>Rings</Th>
+              <Th center>Crashes</Th>
+              <Th center>Time</Th>
             </tr>
           </thead>
           <tbody>
-            {ranked.map((p) => (
-              <tr key={p.id} className={p.id === race.sessionId ? 'me' : ''}>
-                <td>{p.rank || ''}</td>
-                <td>
+            {ranked.map((p, i) => (
+              <tr key={p.id} style={p.id === race.sessionId ? rowMe : undefined}>
+                <Td center>{p.finished ? medal(i + 1) : 'DNF'}</Td>
+                <Td>
                   {p.name}
                   {p.id === race.sessionId ? ' (you)' : ''}
-                </td>
-                <td>{p.ringsPassed}</td>
-                <td>{p.finished ? '🏁' : ''}</td>
+                </Td>
+                <Td center>{p.ringsPassed}</Td>
+                <Td center style={{ color: p.collisions > 0 ? COLORS.bad : COLORS.dim }}>
+                  {p.collisions}
+                </Td>
+                <Td center style={{ fontFamily: MONO, color: COLORS.dim }}>
+                  {p.finished ? formatTime(p.finishTime - race.raceStartAt) : '—'}
+                </Td>
               </tr>
             ))}
           </tbody>
         </table>
-        <button style={{ marginTop: 14 }} onClick={() => raceConnection.leave()}>
-          Back to lobby
-        </button>
-      </div>
-    </div>
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
+          <Button variant="primary" accent={COLORS.accent} onClick={() => raceConnection.playAgain()}>
+            Play again
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => (onExit ? onExit() : raceConnection.leave())}
+            style={{ marginLeft: 'auto' }}
+          >
+            Leave
+          </Button>
+        </div>
+      </Panel>
+    </Overlay>
   )
 }
 
 function ControlsLegend() {
-  const keyStyle: React.CSSProperties = {
-    display: 'inline-block',
-    minWidth: 18,
-    padding: '1px 6px',
-    margin: '0 4px',
-    borderRadius: 4,
-    background: 'rgba(255,255,255,0.15)',
-    border: '1px solid rgba(255,255,255,0.3)',
-    textAlign: 'center',
-  }
   return (
-    <div style={{ ...hudPanel, bottom: 12, left: 12, font: '12px/1.5 ui-monospace, monospace' }}>
-      <div>
-        <span style={keyStyle}>Space</span>
-        <span style={{ opacity: 0.7 }}>flap (climb)</span>
+    <div style={{ ...hudPanel, bottom: 14, left: 14 }}>
+      <div style={{ marginBottom: 2 }}>
+        <KeyCap>Space</KeyCap>
+        <span style={{ color: COLORS.dim }}>flap (climb)</span>
+      </div>
+      <div style={{ marginBottom: 2 }}>
+        <KeyCap>W</KeyCap>
+        <span style={{ color: COLORS.dim }}>dive</span>
       </div>
       <div>
-        <span style={keyStyle}>W</span>
-        <span style={{ opacity: 0.7 }}>dive</span>
-      </div>
-      <div>
-        <span style={keyStyle}>A</span>/<span style={keyStyle}>D</span>
-        <span style={{ opacity: 0.7 }}>lean left / right</span>
+        <KeyCap>A</KeyCap>
+        <KeyCap>D</KeyCap>
+        <span style={{ color: COLORS.dim }}>lean</span>
       </div>
     </div>
   )
 }
 
-const overlayStyle: React.CSSProperties = {
-  position: 'absolute',
-  inset: 0,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  background: 'rgba(10,16,28,0.55)',
-  color: '#e7ecf5',
+// --- small presentational helpers ---
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <span style={{ color: COLORS.dim, fontSize: '0.8rem', letterSpacing: 0.5 }}>{label}</span>
+      {children}
+    </label>
+  )
 }
 
-const panelStyle: React.CSSProperties = {
-  background: 'rgba(17,21,31,0.92)',
-  border: '1px solid #2c3445',
+function Segmented({
+  options,
+  value,
+  onChange,
+}: {
+  options: { id: string; label: string }[]
+  value: string
+  onChange: (id: string) => void
+}) {
+  return (
+    <div style={{ display: 'flex', gap: 6, background: 'rgba(10,16,28,0.5)', padding: 4, borderRadius: 12 }}>
+      {options.map((o) => {
+        const active = o.id === value
+        return (
+          <button
+            key={o.id}
+            type="button"
+            onClick={() => onChange(o.id)}
+            style={{
+              flex: 1,
+              padding: '9px 10px',
+              borderRadius: 9,
+              border: 'none',
+              cursor: 'pointer',
+              fontFamily: FONT,
+              fontSize: '0.9rem',
+              fontWeight: 600,
+              color: active ? '#0b1422' : COLORS.text,
+              background: active ? COLORS.text : 'transparent',
+              transition: 'background 0.12s ease, color 0.12s ease',
+            }}
+          >
+            {o.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function medal(rank: number): string {
+  if (rank === 1) return '🥇'
+  if (rank === 2) return '🥈'
+  if (rank === 3) return '🥉'
+  return String(rank)
+}
+
+function HudRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={hudRowStyle}>
+      <span style={{ color: COLORS.dim }}>{label}</span>
+      <span>{value}</span>
+    </div>
+  )
+}
+
+function Th({ children, center }: { children: React.ReactNode; center?: boolean }) {
+  return (
+    <th
+      style={{
+        textAlign: center ? 'center' : 'left',
+        padding: '8px 10px',
+        color: COLORS.dim,
+        fontWeight: 600,
+        fontSize: '0.78rem',
+        letterSpacing: 0.5,
+        borderBottom: '1px solid rgba(120,150,180,0.2)',
+      }}
+    >
+      {children}
+    </th>
+  )
+}
+
+function Td({
+  children,
+  center,
+  style,
+}: {
+  children: React.ReactNode
+  center?: boolean
+  style?: React.CSSProperties
+}) {
+  return (
+    <td
+      style={{
+        textAlign: center ? 'center' : 'left',
+        padding: '8px 10px',
+        borderBottom: '1px solid rgba(120,150,180,0.1)',
+        fontSize: '0.9rem',
+        ...style,
+      }}
+    >
+      {children}
+    </td>
+  )
+}
+
+// --- styles ---
+
+const titleStyle: React.CSSProperties = {
+  fontSize: '1.5rem',
+  fontWeight: 800,
+  margin: '0 0 4px',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  color: COLORS.text,
+}
+
+const subStyle: React.CSSProperties = {
+  margin: '0 0 18px',
+  color: COLORS.dim,
+  fontSize: '0.9rem',
+}
+
+const linkStyle: React.CSSProperties = {
+  background: 'none',
+  border: 'none',
+  color: COLORS.dim,
+  cursor: 'pointer',
+  fontFamily: FONT,
+  fontSize: '0.85rem',
+  textDecoration: 'underline',
+  padding: 0,
+}
+
+const codeBox: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 16,
+  padding: '14px 16px',
   borderRadius: 12,
-  padding: '22px 26px',
-  minWidth: 420,
-  maxWidth: 560,
-  boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+  background: 'rgba(10,16,28,0.5)',
+  border: '1px solid rgba(120,150,180,0.2)',
+  margin: '8px 0 16px',
+}
+
+const winnerBox: React.CSSProperties = {
+  textAlign: 'center',
+  padding: '16px 18px',
+  borderRadius: 14,
+  background: 'rgba(255,210,63,0.08)',
+  border: '1px solid rgba(255,210,63,0.25)',
+  margin: '6px 0 18px',
+}
+
+const tableStyle: React.CSSProperties = {
+  width: '100%',
+  borderCollapse: 'collapse',
+}
+
+const rowMe: React.CSSProperties = {
+  background: 'rgba(255,210,63,0.08)',
 }
 
 const hudPanel: React.CSSProperties = {
   position: 'absolute',
   padding: '12px 14px',
-  borderRadius: 8,
-  background: 'rgba(10,20,30,0.65)',
-  color: '#dff6ff',
-  font: '13px/1.5 ui-monospace, monospace',
+  borderRadius: 12,
+  background: 'rgba(10,18,30,0.66)',
+  color: COLORS.text,
+  fontFamily: FONT,
+  fontSize: '0.85rem',
   pointerEvents: 'none',
-  backdropFilter: 'blur(4px)',
+  backdropFilter: 'blur(6px)',
+  border: '1px solid rgba(120,150,180,0.18)',
 }
 
-const hudRow: React.CSSProperties = {
+const hudRowStyle: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
-  gap: 16,
+  gap: 18,
+  lineHeight: 1.7,
 }

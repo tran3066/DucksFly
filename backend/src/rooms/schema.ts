@@ -55,14 +55,22 @@ export class PlayerSchema extends Schema {
   @type("boolean") spunOut = false;
   @type("boolean") finished = false;
   @type("boolean") ready = false;
+  /** Player-vs-player collisions this race (display only — never affects rank). */
+  @type("number") collisions = 0;
+  /** Epoch ms this player finished, or 0 if not finished. */
+  @type("number") finishTime = 0;
 }
 
 export class RaceState extends Schema {
   @type("string") phase: RacePhase = "lobby";
+  /** Short, server-generated invite code for this lobby. */
+  @type("string") code = "";
   @type("number") mapSeed = 0;
   @type([RingSchema]) ringLayout = new ArraySchema<RingSchema>();
   /** Epoch ms when the countdown ends (0 outside of countdown). */
   @type("number") countdownEndsAt = 0;
+  /** Epoch ms when racing began (0 outside racing/finished); base for elapsed times. */
+  @type("number") raceStartAt = 0;
   /** sessionId of the host (the only player allowed to start); "" if the room is empty. */
   @type("string") hostId = "";
   @type({ map: PlayerSchema }) players = new MapSchema<PlayerSchema>();

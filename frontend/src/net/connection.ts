@@ -8,6 +8,7 @@ import {
 } from "@shared/messages";
 import type { PlayerView, RaceSnapshot } from "./types";
 import { getServerUrl } from "./serverConfig";
+import { generateLobbyCode } from "./lobbyCode";
 
 /**
  * Networking layer for Person C / the game to build on. `RaceConnection` owns the single
@@ -23,9 +24,11 @@ import { getServerUrl } from "./serverConfig";
 const INITIAL_SNAPSHOT: RaceSnapshot = {
   status: "idle",
   phase: "lobby",
+  code: "",
   mapSeed: 0,
   ringCount: 0,
   countdownEndsAt: 0,
+  raceStartAt: 0,
   hostId: "",
   players: [],
 };
@@ -47,6 +50,8 @@ function toPlayerView(p: any): PlayerView {
     spunOut: p.spunOut,
     finished: p.finished,
     ready: p.ready,
+    collisions: p.collisions ?? 0,
+    finishTime: p.finishTime ?? 0,
   };
 }
 
@@ -80,13 +85,44 @@ class RaceConnection {
     for (const listener of this.listeners) listener();
   }
 
+  /**
+   * Legacy entry (kept for the old `?view=multiplayer` test routes): joins any open room or
+   * creates one. The real game uses `host()` / `joinByCode()` for private invite lobbies.
+   */
   async join(options: JoinOptions, url: string = getServerUrl()): Promise<void> {
+    await this.connect(url, (client) => client.joinOrCreate("race", options));
+  }
+
+  /** Host a new private lobby: create a room with a fresh invite code. */
+  async host(options: JoinOptions, url: string = getServerUrl()): Promise<void> {
+    const code = generateLobbyCode();
+    await this.connect(url, (client) => client.create("race", { ...options, code }));
+  }
+
+  /**
+   * Join an existing lobby by its invite code. Throws (surfaced as a friendly error) when no
+   * open room with that code exists, e.g. wrong code or the race already started.
+   */
+  async joinByCode(code: string, options: JoinOptions, url: string = getServerUrl()): Promise<void> {
+    await this.connect(
+      url,
+      (client) => client.join("race", { ...options, code }),
+      "No lobby found for that code — check it and try again.",
+    );
+  }
+
+  /** Shared connect path: open the client, run the matchmaking call, wire the room. */
+  private async connect(
+    url: string,
+    matchmake: (client: Client) => Promise<Room>,
+    notFoundMessage?: string,
+  ): Promise<void> {
     if (this.snapshot.status === "connecting") return;
     this.update({ status: "connecting", error: undefined });
 
     try {
       this.client = new Client(url);
-      const room = await this.client.joinOrCreate("race", options);
+      const room = await matchmake(this.client);
       this.room = room;
       this.update({ status: "connected", sessionId: room.sessionId });
 
@@ -101,7 +137,8 @@ class RaceConnection {
         this.update({ ...INITIAL_SNAPSHOT });
       });
     } catch (err) {
-      this.update({ status: "error", error: (err as Error).message });
+      const message = notFoundMessage ?? (err as Error).message;
+      this.update({ status: "error", error: message });
     }
   }
 
@@ -110,9 +147,11 @@ class RaceConnection {
     state.players.forEach((p: any) => players.push(toPlayerView(p)));
     this.update({
       phase: state.phase,
+      code: state.code ?? "",
       mapSeed: state.mapSeed,
       ringCount: state.ringLayout.length,
       countdownEndsAt: state.countdownEndsAt,
+      raceStartAt: state.raceStartAt ?? 0,
       hostId: state.hostId,
       players,
     });
@@ -124,6 +163,11 @@ class RaceConnection {
 
   startRace(): void {
     this.room?.send(ClientMessage.StartRace, {});
+  }
+
+  /** From the results screen: ask the server to reset this room for a rematch. */
+  playAgain(): void {
+    this.room?.send(ClientMessage.PlayAgain, {});
   }
 
   /** Sent by the game loop ~15-20x/sec while racing. */
