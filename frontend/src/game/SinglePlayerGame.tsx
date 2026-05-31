@@ -18,6 +18,7 @@ import { createFlightState, DEFAULT_FLIGHT, type FlightConfig } from './flight'
 import { BOOST, BOOST_SLIDERS } from './gameConfig'
 import { FlightScene } from './FlightScene'
 import type { FlightRigProps } from './FlightRig'
+import { CrashFlash } from './CrashFlash'
 
 export function SinglePlayerGame({ onExit }: { onExit?: () => void }) {
   const stateRef = useRef<DuckState>(createFlightState())
@@ -45,6 +46,8 @@ export function SinglePlayerGame({ onExit }: { onExit?: () => void }) {
   const [debug, setDebug] = useState(false)
   const [finished, setFinished] = useState(false)
   const onFinish = useCallback(() => setFinished(true), [])
+  const [crashAt, setCrashAt] = useState(0)
+  const onCrash = useCallback(() => setCrashAt(performance.now()), [])
 
   const fireImpulse = useCallback(() => {
     impulseRef.current = true
@@ -196,6 +199,7 @@ export function SinglePlayerGame({ onExit }: { onExit?: () => void }) {
     boostSpeedRef,
     boostDurationRef,
     onRingsChanged: syncRings,
+    onCrash,
   }
 
   return (
@@ -219,6 +223,7 @@ export function SinglePlayerGame({ onExit }: { onExit?: () => void }) {
       <ControlsHint />
       <DebugToggle debug={debug} onToggle={() => setDebug((d) => !d)} />
       {onExit && <ExitButton onExit={onExit} />}
+      <CrashFlash at={crashAt} />
       {finished && <FinishOverlay stateRef={stateRef} onReset={resetState} />}
     </div>
   )
