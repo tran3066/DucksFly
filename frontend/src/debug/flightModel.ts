@@ -59,9 +59,9 @@ export const DEFAULT_FLIGHT: FlightConfig = {
   forwardResponse: 2,
   flapForwardGain: 10, // swing -> gain velocity (arcade feel, deviates from Unity's energy-trade)
   diveAccel: 22, // W -> gain velocity diving toward the ground
-  gravity: 14, // Unity
-  liftMultiplier: 34, // strong lift so a swing climbs FAST (held flap 0.9 -> ~30 lift vs 14 gravity)
-  impulseGain: 4, // per-tap wingbeat kick
+  gravity: 12, // softened from Unity's 14 so climbing needs less flap spam (request #3)
+  liftMultiplier: 34, // strong lift so a swing climbs FAST (held flap 0.9 -> ~31 lift vs 12 gravity)
+  impulseGain: 5, // per-tap wingbeat kick (bumped from 4 so single taps climb more)
   verticalDrag: 0.9, // Unity
   maxClimbSpeed: 16, // raised so the fast climb is not capped early
   maxDescentSpeed: 14, // Unity

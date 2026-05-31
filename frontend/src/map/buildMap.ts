@@ -129,25 +129,3 @@ function buildCheckpoints(cfg: MapConfig): Checkpoint[] {
   checkpoints.push({ id: id, z: cfg.length, isFinish: true });
   return checkpoints;
 }
-
-/**
- * Did the duck just fly through this ring's hole this tick?
- * Detects crossing the ring plane (prevZ -> currZ) while inside the hole.
- * Returns: 'pass' (through the hole), 'miss' (crossed plane but outside), or null.
- */
-export function ringCrossing(
-  prevZ: number,
-  currZ: number,
-  x: number,
-  y: number,
-  ring: RingDef,
-  duckRadius: number,
-): 'pass' | 'miss' | null {
-  const rz = ring.pos[2];
-  const crossed = prevZ < rz && currZ >= rz;
-  if (!crossed) return null;
-  const dx = x - ring.pos[0];
-  const dy = y - ring.pos[1];
-  const dist = Math.hypot(dx, dy);
-  return dist <= ring.radius - duckRadius ? 'pass' : 'miss';
-}
