@@ -55,20 +55,21 @@ export interface FlightConfig {
 // Every value is a live leva slider under the debug toggle, so this is just the
 // playable starting point to tune from.
 export const DEFAULT_FLIGHT: FlightConfig = {
-  baseForwardSpeed: 12, // base cruise velocity (always moving forward)
+  baseForwardSpeed: 15.6, // base cruise velocity (+30% over the original 12)
   forwardResponse: 2,
   flapForwardGain: 10, // swing -> gain velocity (arcade feel, deviates from Unity's energy-trade)
-  diveAccel: 22, // W -> gain velocity diving toward the ground
-  gravity: 12, // softened from Unity's 14 so climbing needs less flap spam (request #3)
-  liftMultiplier: 34, // strong lift so a swing climbs FAST (held flap 0.9 -> ~31 lift vs 12 gravity)
+  diveAccel: 27.5, // forward boost while diving (+25% over the base 22 for a punchier dive)
+  gravity: 0, // NO passive sink: the bird holds altitude when neither flapping nor
+  // diving. Raise this to add a constant glide-down; 0 means descent only on a dive.
+  liftMultiplier: 34, // strong lift so a swing climbs FAST
   impulseGain: 5, // per-tap wingbeat kick (bumped from 4 so single taps climb more)
-  verticalDrag: 0.9, // Unity
+  verticalDrag: 0.9, // pulls vertical velocity back toward 0 (level) when idle
   maxClimbSpeed: 16, // raised so the fast climb is not capped early
-  maxDescentSpeed: 14, // Unity
-  diveSink: 12, // web: extra descent at dive=1 (W)
+  maxDescentSpeed: 23.52, // dive drop-speed cap (+20% over the prior 19.6); only a dive reaches it
+  diveSink: 26, // down-force at dive=1: with gravity 0, this alone drives the dive and saturates maxDescentSpeed
   maxRollDeg: 45, // Unity
   rollResponse: 6, // Unity
-  lateralSpeedAtMaxBank: 18, // Unity 10, bumped for the 3x-wide track
+  lateralSpeedAtMaxBank: 22.5, // strafe speed at full lean (+25% so leaning steers faster)
   lateralResponse: 6, // Unity
   lateralRange: 75, // Unity 25 x3 (wider track)
   pitchFromVy: 0.06, // base climb/sink coupling
@@ -102,12 +103,6 @@ export function createFlightState(): DuckState {
 const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v)
 const DEG = Math.PI / 180
 
-// Flap value at which lift fully cancels gravity: at or above this the bird holds
-// altitude or climbs and NEVER sinks while flapping; below it (barely moving or
-// gliding) gravity wins and it descends. Lined up with the "wings are visibly
-// flapping" animation threshold, so "wings flapping" reads as "not sinking".
-const FLAP_HOLD_FLAP = 0.15
-
 // Frame-rate-independent exponential approach (Unity's ExpLerp).
 function expLerp(a: number, b: number, rate: number, dt: number): number {
   return a + (b - a) * (1 - Math.exp(-rate * dt))
@@ -140,16 +135,17 @@ export function flightStep(
   // store lateral in _lean slot's sibling; we track it on the fly via position
   const vLateral = expLerp(state._lean, vLatTarget, cfg.lateralResponse, dt)
 
-  // Vertical: sustained lift vs gravity vs drag, plus dive sink. While actively
-  // flapping (flap >= FLAP_HOLD_FLAP) the lift at least cancels gravity, so the
-  // bird never sinks while its wings are beating; flap scales the climb ON TOP of
-  // that hold. Below the threshold the gravity term fades out and it glides down.
-  const liftSustained =
-    cfg.gravity * clamp(flap / FLAP_HOLD_FLAP, 0, 1) + cfg.liftMultiplier * flap
+  // Vertical: flap LIFTS, dive SINKS, drag pulls the vertical velocity back toward
+  // 0 (level) when neither is active. There is no passive fall: with gravity 0 the
+  // bird HOLDS its altitude unless the player flaps (climb) or dives (descend), so
+  // it never "constantly descends" -- it only loses height on an active dive. flap
+  // and dive each scale their contribution, and the optional gravity term (default
+  // 0) can add a constant glide-down if a build wants one.
+  const liftSustained = cfg.liftMultiplier * flap
+  const diveSinkAmount = cfg.diveSink * dive
   let vY = state.verticalVel
-  vY += (liftSustained - cfg.gravity - cfg.verticalDrag * vY) * dt
+  vY += (liftSustained - cfg.gravity - diveSinkAmount - cfg.verticalDrag * vY) * dt
   if (actions.flapImpulse) vY += cfg.impulseGain
-  vY -= dive * cfg.diveSink * dt
   vY = clamp(vY, -cfg.maxDescentSpeed, cfg.maxClimbSpeed)
 
   // Forward: cruise at base, and BOTH swinging and diving add velocity (arcade

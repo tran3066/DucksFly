@@ -31,9 +31,10 @@ import { MAX_FRAME_DT, BOOST, BOOST_SLIDERS } from './playgroundConfig'
 import { WebcamPanel } from './WebcamPanel'
 import { useInputStore } from '../input/store'
 import type { LandmarkFrame } from '../input/fixtures/landmarks'
-import { FlapStrategy, wristHeight, type FlapMode } from '../input/gestures/flap'
+import { FlapStrategy, wristHeight, diveFromArmsDown, type FlapMode } from '../input/gestures/flap'
+import { computeLean, type LeanCalib, type TurnMode } from '../input/gestures/lean'
 import { config } from '../input/config'
-import type { Baseline } from '../input/calibration'
+import { getBaseline, type Baseline } from '../input/calibration'
 
 // Mouth-open (the Face Landmarker jawOpen blendshape, 0..1) above this threshold
 // reads as a quack this frame. Fed from WebcamPanel's time-sliced face loop.
@@ -65,6 +66,26 @@ interface GestureDebug {
   minVis: number
   flap: number
   impulses: number
+  lean: number // body-driven steering, -1 screen-left .. +1 screen-right
+  dive: number // body-driven dive 0..1 (arms dropped below the shoulders)
+}
+
+// Live-tunable dive config: lowering the arms below the shoulders noses the duck
+// down. Mirrored from the leva 'Gestures' controls.
+interface DiveConfig {
+  startBelow: number // shoulder-widths the wrists must drop below shoulders to begin
+  fullBelow: number // drop at which dive saturates to 1
+  smoothing: number // EMA factor applied to the raw dive per pose frame
+}
+
+// Live-tunable turn config the rig reads each frame to build the LeanCalib and
+// dispatch shoulder-tilt vs wing. Mirrored from the leva 'Gestures' controls.
+interface TurnConfig {
+  turnMode: TurnMode
+  mirrorSign: number // +1, or -1 when "invert turn" flips a mirrored left/right
+  maxTiltRad: number // shoulder tilt that saturates lean to +/-1
+  saturationWidthRatio: number // wing gap / shoulder width that saturates to +/-1
+  smoothing: number // EMA factor applied to the raw lean per pose frame
 }
 
 /** Runs the fixed-timestep flight model and positions the duck from the result. */
@@ -74,6 +95,8 @@ function PlaygroundRig({
   cfgRef,
   activeRef,
   flapStrategyRef,
+  turnCfgRef,
+  diveCfgRef,
   gestureDbgRef,
   impulseRef,
   duckRef,
@@ -97,6 +120,8 @@ function PlaygroundRig({
   cfgRef: React.RefObject<FlightConfig>
   activeRef: React.RefObject<boolean>
   flapStrategyRef: React.RefObject<FlapStrategy>
+  turnCfgRef: React.RefObject<TurnConfig>
+  diveCfgRef: React.RefObject<DiveConfig>
   gestureDbgRef: React.RefObject<GestureDebug>
   impulseRef: React.RefObject<boolean>
   duckRef: React.RefObject<Group | null>
@@ -130,6 +155,8 @@ function PlaygroundRig({
   const lastPoseFrameRef = useRef<LandmarkFrame | null>(null)
   const gestureFlapRef = useRef(0)
   const flapPulseRef = useRef(0)
+  const gestureLeanRef = useRef(0) // smoothed body-driven steering, -1..1
+  const gestureDiveRef = useRef(0) // smoothed body-driven dive, 0..1
   const stalePoseTicksRef = useRef(0)
 
   useFrame((_, delta) => {
@@ -207,13 +234,37 @@ function PlaygroundRig({
           poseFrame[16].visibility,
         )
         if (flapOut.flapImpulse) dbg.impulses += 1
+
+        // Body-driven steering: shoulder tilt or asymmetric wings (turnMode),
+        // measured against the calibrated rest shoulder angle, then EMA-smoothed so
+        // tracking jitter does not twitch the steering.
+        const tc = turnCfgRef.current
+        const baseline = getBaseline()
+        const calib: LeanCalib = {
+          restShoulderAngle: baseline ? baseline.restShoulderAngle : 0,
+          mirrorSign: tc.mirrorSign,
+          maxTiltRad: tc.maxTiltRad,
+          saturationWidthRatio: tc.saturationWidthRatio,
+        }
+        const rawLean = computeLean(poseFrame, calib, tc.turnMode)
+        gestureLeanRef.current += tc.smoothing * (rawLean - gestureLeanRef.current)
+        dbg.lean = gestureLeanRef.current
+
+        // Body-driven dive: dropping both arms below the shoulders noses the duck
+        // down (the inverse of the arms-up flap), EMA-smoothed like the lean.
+        const dc = diveCfgRef.current
+        const rawDive = diveFromArmsDown(poseFrame, dc.startBelow, dc.fullBelow)
+        gestureDiveRef.current += dc.smoothing * (rawDive - gestureDiveRef.current)
+        dbg.dive = gestureDiveRef.current
       } else {
         // No new pose this tick. A short gap is just MediaPipe between detections,
         // but a SUSTAINED gap means the body left the frame, so zero the gesture
-        // lift and reset the detector buffer so a later return does not spike.
+        // lift/steering and reset the detector buffer so a later return does not spike.
         stalePoseTicksRef.current += 1
         if (stalePoseTicksRef.current > STALE_POSE_TICKS) {
           gestureFlapRef.current = 0
+          gestureLeanRef.current = 0
+          gestureDiveRef.current = 0
           flapStrategyRef.current.reset()
         }
       }
@@ -229,8 +280,8 @@ function PlaygroundRig({
       const merged: DuckActions = {
         flap: Math.min(1, base.flap + k.flap + gestureFlap),
         flapImpulse: false,
-        lean: Math.max(-1, Math.min(1, base.lean + k.lean)),
-        dive: Math.min(1, base.dive + k.dive),
+        lean: Math.max(-1, Math.min(1, base.lean + k.lean + gestureLeanRef.current)),
+        dive: Math.min(1, base.dive + k.dive + gestureDiveRef.current),
         // Quack fires from the slider OR an open mouth (jawOpen blendshape).
         quack: base.quack || useInputStore.getState().jawOpen > QUACK_THRESHOLD,
         egg67: base.egg67,
@@ -353,7 +404,7 @@ function Hud({
     boost: 0,
     ringsPassed: 0,
     jawOpen: 0,
-    gesture: { active: false, h: 0, minVis: 0, flap: 0, impulses: 0 },
+    gesture: { active: false, h: 0, minVis: 0, flap: 0, impulses: 0, lean: 0, dive: 0 },
   }))
 
   useEffect(() => {
@@ -415,7 +466,7 @@ function Hud({
       {row('quack', a.quack ? 'true' : 'false')}
       {row('mouth jawOpen', jawOpen.toFixed(2))}
       {row('egg67', a.egg67 ? 'true' : 'false')}
-      <div style={{ opacity: 0.8, margin: '8px 0 6px', fontWeight: 600 }}>GESTURE (flap)</div>
+      <div style={{ opacity: 0.8, margin: '8px 0 6px', fontWeight: 600 }}>GESTURE</div>
       {row('sim active', gesture.active ? 'yes' : 'no (calibrating)')}
       {/* Live wrist height in body units: how far the wrists are above the
           shoulder line. Binary flap fires when this crosses the high threshold. */}
@@ -425,6 +476,10 @@ function Hud({
       {row('joint vis', gesture.minVis.toFixed(2))}
       {row('gesture flap', gesture.flap.toFixed(2))}
       {row('flap impulses', `${gesture.impulses}`)}
+      {/* Body steering: negative = screen-left, positive = screen-right. */}
+      {row('gesture lean', gesture.lean.toFixed(2))}
+      {/* Body dive: 0 = arms up/level, 1 = arms dropped low (nose-dive). */}
+      {row('gesture dive', gesture.dive.toFixed(2))}
     </div>
   )
 }
@@ -441,6 +496,20 @@ export function PersonAPlayground() {
   // Body-driven flap. The strategy owns the gesture detectors (config.flapMode
   // picks binary vs rate); it is rebuilt when the mode toggles (effect below).
   const flapStrategyRef = useRef<FlapStrategy>(new FlapStrategy())
+  // Turn config the rig reads each frame; mirrored from the leva controls below.
+  const turnCfgRef = useRef<TurnConfig>({
+    turnMode: config.turnMode,
+    mirrorSign: -1, // default steers correctly for the mirrored webcam
+    maxTiltRad: config.leanMaxAngle,
+    saturationWidthRatio: 0.8,
+    smoothing: 0.4,
+  })
+  // Dive config the rig reads each frame; mirrored from the leva controls below.
+  const diveCfgRef = useRef<DiveConfig>({
+    startBelow: 0.4,
+    fullBelow: 1.5,
+    smoothing: 0.4,
+  })
   // Live gesture diagnostics: the rig writes them each frame, the HUD reads them.
   const gestureDbgRef = useRef<GestureDebug>({
     active: false,
@@ -448,6 +517,8 @@ export function PersonAPlayground() {
     minVis: 0,
     flap: 0,
     impulses: 0,
+    lean: 0,
+    dive: 0,
   })
 
   // Ring state. The refs are the authoritative copy the sim loop reads/writes each
@@ -566,7 +637,7 @@ export function PersonAPlayground() {
       // Maps flap speed to lift. Higher = the same flap climbs harder / registers
       // more easily, and a gentle swing already holds altitude instead of sinking.
       // Crank toward 20 to make even small swings launch you up.
-      rateGain: { value: 10.0, min: 0, max: 20, step: 0.1 },
+      rateGain: { value: 11.5, min: 0, max: 20, step: 0.1 },
       // Motion floor: wrist speed below this is treated as noise (no lift). Lower =
       // catches gentler flaps (at the cost of more jitter sensitivity).
       sensitivity: { value: 0.02, min: 0, max: 0.1, step: 0.005 },
@@ -575,6 +646,26 @@ export function PersonAPlayground() {
       highThreshold: { value: 0.25, min: 0, max: 1.5, step: 0.01 },
       lowThreshold: { value: 0.08, min: 0, max: 1, step: 0.01 },
       refractoryFrames: { value: config.flapRefractoryFrames, min: 0, max: 20, step: 1 },
+    }),
+    // Steering: 'lean' = tilt your shoulders, 'wing' = raise one hand higher.
+    turnMode: { value: config.turnMode, options: ['lean', 'wing'] },
+    turnTuning: folder({
+      // Steering is inverted by default to match the mirrored webcam; turn this
+      // ON only if your setup happens to steer the wrong way.
+      invertTurn: false,
+      // Shoulder tilt (degrees) at which lean hits full; smaller = more sensitive.
+      maxTiltDeg: { value: 28, min: 5, max: 60, step: 1 },
+      // Wing mode: wrist height gap (as a fraction of shoulder width) for a full turn.
+      wingSaturation: { value: 0.8, min: 0.2, max: 2, step: 0.05 },
+      // Steering smoothing: higher = snappier, lower = smoother (less jitter).
+      turnSmoothing: { value: 0.4, min: 0.05, max: 1, step: 0.05 },
+    }),
+    // Dive: drop both arms below your shoulders to nose-dive. Values are in
+    // shoulder-widths the wrists sit below the shoulder line.
+    diveTuning: folder({
+      diveStartBelow: { value: 0.4, min: 0, max: 2, step: 0.05 },
+      diveFullBelow: { value: 1.5, min: 0.5, max: 3, step: 0.05 },
+      diveSmoothing: { value: 0.4, min: 0.05, max: 1, step: 0.05 },
     }),
   })
 
@@ -609,7 +700,7 @@ export function PersonAPlayground() {
       liftMultiplier: { value: DEFAULT_FLIGHT.liftMultiplier, min: 4, max: 40 },
       impulseGain: { value: DEFAULT_FLIGHT.impulseGain, min: 0, max: 8 },
       maxClimbSpeed: { value: DEFAULT_FLIGHT.maxClimbSpeed, min: 2, max: 20 },
-      maxDescentSpeed: { value: DEFAULT_FLIGHT.maxDescentSpeed, min: 2, max: 20 },
+      maxDescentSpeed: { value: DEFAULT_FLIGHT.maxDescentSpeed, min: 2, max: 40 },
       diveSink: { value: DEFAULT_FLIGHT.diveSink, min: 0, max: 30 },
     }),
     banking: folder({
@@ -694,6 +785,35 @@ export function PersonAPlayground() {
     gestures.sensitivity,
   ])
 
+  // Mirror the leva turn controls into the ref the sim loop reads (in an effect,
+  // never during render). maxTiltDeg is shown in degrees for feel; convert to rad.
+  useEffect(() => {
+    turnCfgRef.current = {
+      turnMode: gestures.turnMode as TurnMode,
+      // Default (invertTurn off) is -1, which steers correctly for the mirrored
+      // webcam; turning it on flips to +1 for a setup that reads the other way.
+      mirrorSign: gestures.invertTurn ? 1 : -1,
+      maxTiltRad: (gestures.maxTiltDeg * Math.PI) / 180,
+      saturationWidthRatio: gestures.wingSaturation,
+      smoothing: gestures.turnSmoothing,
+    }
+  }, [
+    gestures.turnMode,
+    gestures.invertTurn,
+    gestures.maxTiltDeg,
+    gestures.wingSaturation,
+    gestures.turnSmoothing,
+  ])
+
+  // Mirror the leva dive controls into the ref the sim loop reads.
+  useEffect(() => {
+    diveCfgRef.current = {
+      startBelow: gestures.diveStartBelow,
+      fullBelow: gestures.diveFullBelow,
+      smoothing: gestures.diveSmoothing,
+    }
+  }, [gestures.diveStartBelow, gestures.diveFullBelow, gestures.diveSmoothing])
+
   const animCfg: AnimMapConfig = {
     ...DEFAULT_ANIM_MAP,
     flapActiveThreshold: duckVisual.flapActiveThreshold,
@@ -727,6 +847,8 @@ export function PersonAPlayground() {
           cfgRef={cfgRef}
           activeRef={activeRef}
           flapStrategyRef={flapStrategyRef}
+          turnCfgRef={turnCfgRef}
+          diveCfgRef={diveCfgRef}
           gestureDbgRef={gestureDbgRef}
           impulseRef={impulseRef}
           duckRef={duckGroupRef}

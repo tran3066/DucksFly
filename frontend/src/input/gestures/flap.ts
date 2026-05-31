@@ -366,3 +366,23 @@ export class FlapStrategy {
     this.rate?.reset()
   }
 }
+
+/**
+ * Dive from lowering the arms (the mirror image of flap): when the wrists drop
+ * BELOW the shoulder line, the duck noses down. Reuses the same signed wrist
+ * height as flap (positive = hands up), so a NEGATIVE height means hands below
+ * the shoulders. We map how far below the shoulders the wrists sit, in body
+ * units, into a 0..1 dive: nothing until startBelow (a dead zone so arms resting
+ * a little low does not dive), ramping to a full dive at fullBelow. Hands at or
+ * above shoulder height return 0, so flapping (arms up) never reads as a dive.
+ */
+export function diveFromArmsDown(
+  frame: LandmarkFrame,
+  startBelow: number = 0.4,
+  fullBelow: number = 1.5,
+): number {
+  // Shoulder-widths the wrists sit BELOW the shoulders (negate the signed height).
+  const below = -wristHeight(frame)
+  if (fullBelow <= startBelow) return 0
+  return clamp01((below - startBelow) / (fullBelow - startBelow))
+}

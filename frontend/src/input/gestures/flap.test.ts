@@ -11,6 +11,7 @@ import {
   BinaryFlapDetector,
   FlapRateDetector,
   FlapStrategy,
+  diveFromArmsDown,
   type FlapMode,
 } from './flap'
 import { makeFlapSequence, makeLandmarkFrame } from '../fixtures/landmarks'
@@ -386,6 +387,36 @@ describe('FlapStrategy (flapMode toggle)', () => {
     expect(binaryFlapAlwaysZero).toBe(true)
     expect(rateMaxFlap).toBeGreaterThan(0)
     expect(rateNoImpulse).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Dive from lowering the arms (the inverse of flap height)
+// ---------------------------------------------------------------------------
+describe('diveFromArmsDown', () => {
+  // Default pose shoulders sit at y=0.35; move both wrists (15, 16) to a height.
+  const armsAt = (wristY: number) => makeLandmarkFrame({ 15: { y: wristY }, 16: { y: wristY } })
+
+  it('no dive when the arms are at shoulder height', () => {
+    expect(diveFromArmsDown(armsAt(0.35))).toBe(0)
+  })
+
+  it('full dive when the arms drop well below the shoulders', () => {
+    expect(diveFromArmsDown(armsAt(0.6))).toBeGreaterThan(0.9)
+  })
+
+  it('a slight drop within the dead zone does not dive', () => {
+    expect(diveFromArmsDown(armsAt(0.4))).toBe(0)
+  })
+
+  it('ADVERSARIAL: arms RAISED (a flap) never reads as a dive', () => {
+    expect(diveFromArmsDown(armsAt(0.2))).toBe(0)
+  })
+
+  it('clamps to at most 1 for arms dropped to the floor', () => {
+    const dive = diveFromArmsDown(armsAt(1.0))
+    expect(dive).toBeLessThanOrEqual(1)
+    expect(dive).toBeGreaterThan(0.9)
   })
 })
 

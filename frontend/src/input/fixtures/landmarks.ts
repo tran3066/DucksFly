@@ -233,6 +233,149 @@ export function makeFlapSequence(opts: FlapSequenceOptions = {}): LandmarkFrame[
   })
 }
 
+// ---------------------------------------------------------------------------
+// Lean / turn fixtures (plan Step 05.1 - 05.3). These pin only the landmarks the
+// lean math reads: the two shoulders (11 left, 12 right) for shoulder-tilt, and
+// the two wrists (15 left, 16 right) for the asymmetric-wing strategy. Every
+// other index falls back to the visible standing DEFAULT_POSE so no math hits a
+// missing landmark.
+//
+// Sign conventions the lean functions assume, baked into these fixtures:
+//   - Shoulder line angle is atan2(r12.y - l11.y, r12.x - l11.x). With the left
+//     shoulder (11) at the SMALLER x and the right shoulder (12) at the LARGER x,
+//     dx is positive, so a level pose reads angle ~0 (the lean tests pass a calib
+//     whose restShoulderAngle is 0). The right shoulder dropping LOWER (larger y,
+//     since y grows DOWNWARD) makes the angle positive -> a positive (right) lean.
+//   - Wing gap is lWrist.y - rWrist.y. The right wrist (16) going HIGHER (smaller
+//     y) makes the gap positive -> a positive (right) lean.
+// These deliberately use shoulders at x 0.4 / 0.6 (not the mirrored DEFAULT_POSE
+// layout) so the raw angle is measured from the +x axis and a level stance is 0.
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a lean fixture: a full 33-landmark standing frame, then pin the shoulder
+ * and wrist landmarks the lean math reads to the given coordinates (all fully
+ * visible). Keeps each named fixture below to one short literal.
+ */
+function makeLeanFrame(parts: {
+  l11: { x: number; y: number } // left shoulder (11)
+  r12: { x: number; y: number } // right shoulder (12)
+  l15: { x: number; y: number } // left wrist (15)
+  r16: { x: number; y: number } // right wrist (16)
+}): LandmarkFrame {
+  return makeLandmarkFrame({
+    11: { x: parts.l11.x, y: parts.l11.y, visibility: 1 },
+    12: { x: parts.r12.x, y: parts.r12.y, visibility: 1 },
+    15: { x: parts.l15.x, y: parts.l15.y, visibility: 1 },
+    16: { x: parts.r16.x, y: parts.r16.y, visibility: 1 },
+  })
+}
+
+// Level shoulders: equal y, dx = +0.2 -> raw angle 0 -> lean ~0 against rest 0.
+// Wrists are also level so this same frame is harmless to any wing read.
+export const levelFrame: LandmarkFrame = makeLeanFrame({
+  l11: { x: 0.4, y: 0.4 },
+  r12: { x: 0.6, y: 0.4 },
+  l15: { x: 0.4, y: 0.6 },
+  r16: { x: 0.6, y: 0.6 },
+})
+
+// Right tilt: the right shoulder (12) sits LOWER (larger y) than the left.
+// dy = 0.46 - 0.40 = +0.06, dx = +0.2 -> atan2 ~ +0.29 rad -> lean ~ +0.58.
+export const tiltRightFrame: LandmarkFrame = makeLeanFrame({
+  l11: { x: 0.4, y: 0.4 },
+  r12: { x: 0.6, y: 0.46 },
+  l15: { x: 0.4, y: 0.6 },
+  r16: { x: 0.6, y: 0.6 },
+})
+
+// Left tilt: mirror of the above, the left shoulder (11) sits LOWER.
+// dy = 0.40 - 0.46 = -0.06 -> atan2 ~ -0.29 rad -> lean ~ -0.58.
+export const tiltLeftFrame: LandmarkFrame = makeLeanFrame({
+  l11: { x: 0.4, y: 0.46 },
+  r12: { x: 0.6, y: 0.4 },
+  l15: { x: 0.4, y: 0.6 },
+  r16: { x: 0.6, y: 0.6 },
+})
+
+// Extreme right tilt: dy = +0.2 over dx = +0.1 -> atan2 ~ +1.107 rad, well past
+// maxTiltRad (~0.5), so the scaled value is ~2.2 and must clamp to exactly +1.
+export const tiltExtremeFrame: LandmarkFrame = makeLeanFrame({
+  l11: { x: 0.45, y: 0.4 },
+  r12: { x: 0.55, y: 0.6 },
+  l15: { x: 0.45, y: 0.7 },
+  r16: { x: 0.55, y: 0.7 },
+})
+
+// Far player, same RIGHT tilt angle as tiltRightFrame but shoulders closer
+// together: dx = +0.1 and dy = +0.03 keep the SAME 0.06/0.2 = 0.03/0.1 ratio, so
+// atan2 is identical (~+0.29 rad) and the lean reads equal. Angle is naturally
+// scale invariant, which is exactly what the near==far test checks.
+export const tiltRightFarFrame: LandmarkFrame = makeLeanFrame({
+  l11: { x: 0.45, y: 0.4 },
+  r12: { x: 0.55, y: 0.43 },
+  l15: { x: 0.45, y: 0.55 },
+  r16: { x: 0.55, y: 0.55 },
+})
+
+// Both wrists at the same height -> gap 0 -> wing lean ~0. Shoulders level too.
+export const wingsLevelFrame: LandmarkFrame = makeLeanFrame({
+  l11: { x: 0.4, y: 0.4 },
+  r12: { x: 0.6, y: 0.4 },
+  l15: { x: 0.35, y: 0.5 },
+  r16: { x: 0.65, y: 0.5 },
+})
+
+// Right wrist (16) raised HIGHER (smaller y) than the left wrist (15).
+// gap = 0.5 - 0.4 = +0.1, shoulderWidth 0.2 -> ratio 0.5, /0.8 -> lean ~ +0.625.
+export const rightWingUpFrame: LandmarkFrame = makeLeanFrame({
+  l11: { x: 0.4, y: 0.4 },
+  r12: { x: 0.6, y: 0.4 },
+  l15: { x: 0.35, y: 0.5 },
+  r16: { x: 0.65, y: 0.4 },
+})
+
+// Left wrist (15) raised higher than the right -> negative gap -> lean ~ -0.625.
+export const leftWingUpFrame: LandmarkFrame = makeLeanFrame({
+  l11: { x: 0.4, y: 0.4 },
+  r12: { x: 0.6, y: 0.4 },
+  l15: { x: 0.35, y: 0.4 },
+  r16: { x: 0.65, y: 0.5 },
+})
+
+// Far player, same wing pose proportionally: shoulders closer (width 0.1) and
+// the wrist gap halved to 0.05 so the gap/shoulderWidth ratio (0.5) matches
+// rightWingUpFrame exactly. Normalizing by shoulder width makes near == far.
+export const rightWingUpFarFrame: LandmarkFrame = makeLeanFrame({
+  l11: { x: 0.45, y: 0.4 },
+  r12: { x: 0.55, y: 0.4 },
+  l15: { x: 0.425, y: 0.475 },
+  r16: { x: 0.575, y: 0.425 },
+})
+
+// Right wrist raised FAR above the left: gap = 0.6 - 0.2 = +0.4 over width 0.2 ->
+// ratio 2.0, /0.8 -> 2.5, well past 1, so it must clamp to exactly +1.
+export const rightWingExtremeFrame: LandmarkFrame = makeLeanFrame({
+  l11: { x: 0.4, y: 0.4 },
+  r12: { x: 0.6, y: 0.4 },
+  l15: { x: 0.35, y: 0.6 },
+  r16: { x: 0.65, y: 0.2 },
+})
+
+// Toggle (05.3) adversarial fixture: the two strategies must DISAGREE in sign.
+//   - Shoulder tilt: the left shoulder (11) sits lower (y 0.5) than the right
+//     (12, y 0.4), dy = -0.1 over dx = +0.2 -> atan2 ~ -0.46 rad -> NEGATIVE lean.
+//   - Wing gap: the right wrist (16, y 0.4) sits higher than the left (15, y 0.5)
+//     -> positive gap -> POSITIVE lean.
+// So 'lean' (shoulder) mode reads negative and 'wing' mode reads positive on the
+// SAME frame, which is exactly what the toggle test checks.
+export const conflictFrame: LandmarkFrame = makeLeanFrame({
+  l11: { x: 0.4, y: 0.5 },
+  r12: { x: 0.6, y: 0.4 },
+  l15: { x: 0.35, y: 0.5 },
+  r16: { x: 0.65, y: 0.4 },
+})
+
 /**
  * Scale every landmark toward the centroid of the tracked landmarks by factor
  * k. k<1 shrinks the pose (simulating the player standing farther from the
