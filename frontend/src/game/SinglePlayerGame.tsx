@@ -330,7 +330,7 @@ function Hud({
   const row = (label: string, value: string, accent = false) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, padding: '2.5px 0' }}>
       <span style={{ color: COLORS.hudDim }}>{label}</span>
-      <span style={{ color: accent ? COLORS.orange : COLORS.hudText, fontWeight: 500 }}>{value}</span>
+      <span style={{ color: accent ? COLORS.yellow : COLORS.hudText, fontWeight: 500 }}>{value}</span>
     </div>
   )
   const header = (text: string) => (
@@ -436,7 +436,7 @@ function FinishOverlay({
         <p style={{ color: COLORS.slateDim, margin: '0 0 26px', fontWeight: 500 }}>Nice flying.</p>
         <div style={{ display: 'flex', gap: 38, justifyContent: 'center', margin: '0 0 28px' }}>
           {stat('TIME', formatTime(stats.ms), COLORS.cyanDeep)}
-          {stat('RINGS', String(stats.rings), COLORS.orangeDeep)}
+          {stat('RINGS', String(stats.rings), COLORS.yellowDeep)}
           {stat('DISTANCE', `${stats.distance.toFixed(0)}m`, COLORS.slate)}
         </div>
         <div style={{ display: 'flex', gap: 13, justifyContent: 'center' }}>

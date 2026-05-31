@@ -52,13 +52,13 @@ export function RaceHud({
           label="RINGS"
           value={`${self?.ringsPassed ?? 0}`}
           suffix={`/${ringCount}`}
-          color={COLORS.orange}
+          color={COLORS.yellow}
         />
         <StatChip
           label="RANK"
           value={`${self?.rank || '–'}`}
           suffix={`/${race.players.length}`}
-          color={COLORS.orange}
+          color={COLORS.yellow}
         />
       </div>
 
@@ -82,7 +82,7 @@ export function RaceHud({
           <div key={p.id} style={hudRowStyle}>
             <span
               style={{
-                color: p.id === race.sessionId ? COLORS.orange : COLORS.hudText,
+                color: p.id === race.sessionId ? COLORS.yellow : COLORS.hudText,
                 fontWeight: p.id === race.sessionId ? 700 : 500,
               }}
             >
@@ -153,8 +153,8 @@ function FinishBanner({ name, secs }: { name: string; secs: number }) {
         transform: 'translateX(-50%)',
         padding: '8px 18px',
         background: COLORS.hud,
-        border: `1px solid ${COLORS.orange}`,
-        color: COLORS.orange,
+        border: `1px solid ${COLORS.yellow}`,
+        color: COLORS.yellow,
         fontFamily: FONT_DISPLAY,
         fontSize: '0.95rem',
         fontWeight: 700,

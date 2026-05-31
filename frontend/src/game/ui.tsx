@@ -13,15 +13,20 @@ export const FONT_MONO = '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo,
 export const FONT = FONT_BODY
 export const MONO = FONT_MONO
 
-// Low-poly UI palette (mirrors :root in the prototype).
+// Low-poly UI palette. Brand accent is University of Oregon green (#154733) with
+// UO yellow (#FEE123) as a secondary pop. The legacy `orange*` token names are kept
+// (and mapped to UO green) so existing call sites don't need to change.
 export const COLORS = {
-  // 3D-echoing brand accents
-  orange: '#ff8a1f',
-  orangeDeep: '#f06d10',
+  // Brand primary — UO green. `orange`/`orangeDeep` names kept for back-compat.
+  orange: '#2c8a4f',
+  orangeDeep: '#154733',
+  // UO secondary — yellow.
+  yellow: '#fee123',
+  yellowDeep: '#e6c800',
   cyan: '#29c2e8',
   cyanDeep: '#15a6cc',
-  green: '#57b94f',
-  greenDeep: '#3f9a3f',
+  green: '#2c8a4f',
+  greenDeep: '#154733',
 
   // Bright panels
   slate: '#20303f',
@@ -40,11 +45,11 @@ export const COLORS = {
   text: '#20303f', // body text on bright panels (was '#eaf4ff')
   dim: '#5e7184',
   faint: '#8a9aab',
-  accent: '#ff8a1f', // primary CTA color
+  accent: '#154733', // primary CTA color (UO green)
   accentBlue: '#29c2e8', // solo / camera accent
-  good: '#57b94f',
+  good: '#2c8a4f',
   bad: '#ff5c5c',
-  gold: '#ff8a1f',
+  gold: '#fee123', // UO yellow for stat / collectible highlights
 } as const
 
 export const RADIUS = 13
@@ -389,7 +394,7 @@ export function BrandMark({ size = 'lg' }: { size?: 'lg' | 'md' }) {
           textShadow: '0 3px 0 rgba(32,64,96,0.25), 0 8px 20px rgba(20,40,60,0.3)',
         }}
       >
-        Ducks<span style={{ color: COLORS.orange }}>Fly</span>
+        Ducks<span style={{ color: COLORS.yellow }}>Fly</span>
       </h1>
     </div>
   )
