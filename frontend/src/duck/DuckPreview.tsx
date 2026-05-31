@@ -4,6 +4,8 @@ import { Grid, OrbitControls } from '@react-three/drei'
 import { Duck } from './Duck'
 import {
   Bush,
+  Grass,
+  GRASS_VARIANTS,
   Ground,
   GROUND_VARIANTS,
   Rock,
@@ -61,6 +63,10 @@ export function DuckPreview() {
           {/* All five rocks in a row to the side. */}
           {ROCK_VARIANTS.map((v, i) => (
             <Rock key={v} variant={v} position={[(i - 2) * 3, 0, 3]} />
+          ))}
+          {/* Both grass tufts near the duck. */}
+          {GRASS_VARIANTS.map((v, i) => (
+            <Grass key={v} variant={v} position={[i * 1.5 - 0.75, 0, 1.5]} />
           ))}
           <Bush position={[-3, 0, 0]} />
         </Suspense>

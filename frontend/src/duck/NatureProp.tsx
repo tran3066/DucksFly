@@ -118,3 +118,16 @@ export function Rock({
 }: ThreeElements['group'] & { variant?: RockVariant }) {
   return <NatureProp file={`Rock_0${variant}.fbx`} fitHeight={1.2} {...props} />
 }
+
+/** The available grass tufts in the pack (Grass_01.fbx … Grass_02.fbx). */
+export type GrassVariant = 1 | 2
+export const GRASS_VARIANTS: GrassVariant[] = [1, 2]
+
+// Grass tufts are small foliage; normalize to ~0.4 units tall (scale varies in
+// the source like the rocks, so fitHeight is safer than a fixed scale).
+export function Grass({
+  variant = 1,
+  ...props
+}: ThreeElements['group'] & { variant?: GrassVariant }) {
+  return <NatureProp file={`Grass_0${variant}.fbx`} fitHeight={0.4} {...props} />
+}
