@@ -27,6 +27,20 @@ import { type AnimMapConfig } from '../avatar/animationMap'
 import { flightStep, createFlightState, type FlightConfig } from './flight'
 import { lastCheckpointZ } from './respawn'
 import { MAX_FRAME_DT, BOOST } from './gameConfig'
+import { makeIdleActions } from '../shared/types/duckActions'
+import { useInputStore } from '../input/store'
+import { getBaseline, useCalibrationStore } from '../input/calibration'
+import { diveFromArmsDown, type FlapStrategy } from '../input/gestures/flap'
+import { computeLean, type LeanCalib } from '../input/gestures/lean'
+import type { LandmarkFrame } from '../input/fixtures/landmarks'
+import {
+  GESTURE_TURN,
+  GESTURE_DIVE,
+  QUACK_THRESHOLD,
+  STALE_POSE_TICKS,
+  FLAP_PULSE_DECAY_RATE,
+  makeFlapStrategy,
+} from './gestureConfig'
 
 /** Invulnerability window after a respawn, ms (matches the MP spin-out window). */
 const RESPAWN_INVULN_MS = 1200
@@ -40,10 +54,14 @@ export interface FlightRigProps {
   cfgRef: React.RefObject<FlightConfig>
   impulseRef: React.RefObject<boolean>
   duckRef: React.RefObject<Group | null>
-  duckVisual: { scale: number; modelYaw: number; crossfade: number }
+  duckVisual: { scale: number; modelYaw: number; crossfade: number; flapAnimSpeed?: number }
   animCfg: AnimMapConfig
   clipRef: React.RefObject<string>
   keyRef: React.RefObject<KeyActions>
+  /** When true, fold MediaPipe camera gestures (flap/lean/dive/quack) into the
+   *  merged actions, on top of the always-live keyboard. False = keyboard only
+   *  (byte-identical to the pre-camera behavior). */
+  cameraControl: boolean
   /** Sliders + keyboard merged here each frame; drives the duck anim + HUD. */
   mergedRef: React.RefObject<DuckActions>
   mapRef: React.RefObject<MapDef>
@@ -77,6 +95,7 @@ export function FlightRig({
   animCfg,
   clipRef,
   keyRef,
+  cameraControl,
   mergedRef,
   mapRef,
   variant = 'male',
@@ -97,6 +116,22 @@ export function FlightRig({
   // performance.now() ms until which collisions are ignored (post-respawn grace).
   const invulnUntilRef = useRef(0)
 
+  // --- MediaPipe gesture plumbing (camera control). Ported verbatim from the
+  //     Person A playground's PlaygroundRig so the felt behavior is identical.
+  //     The FlapStrategy must see each POSE frame exactly once (its velocity
+  //     window counts pose frames), but useFrame runs faster than pose updates,
+  //     so we only push when the store's landmark frame reference changes.
+  //     gestureFlapRef carries continuous rate-mode lift between pose frames; the
+  //     binary-mode impulse is fired one-shot through impulseRef. These refs are
+  //     only consumed while cameraControl is true (gestures gate to 0 otherwise). ---
+  const flapStrategyRef = useRef<FlapStrategy>(makeFlapStrategy())
+  const lastPoseFrameRef = useRef<LandmarkFrame | null>(null)
+  const gestureFlapRef = useRef(0)
+  const flapPulseRef = useRef(0)
+  const gestureLeanRef = useRef(0)
+  const gestureDiveRef = useRef(0)
+  const stalePoseTicksRef = useRef(0)
+
   useFrame((_, delta) => {
     const cfg = cfgRef.current
 
@@ -104,23 +139,82 @@ export function FlightRig({
     // half-width, so the lateral clamp always matches the rendered side walls.
     cfg.lateralRange = mapRef.current.halfWidth
 
+    // A camera (re)calibrate gate is open: freeze the sim (the duck hovers) until
+    // it closes. Only relevant in camera mode; keyboard mode never opens the gate.
+    const calibrating = cameraControl && useCalibrationStore.getState().gateOpen
     const frozen = enableFinish && finishedRef.current
-    const running = runningRef.current && !frozen
+    const running = runningRef.current && !frozen && !calibrating
 
     if (running) {
       accRef.current += Math.min(delta, MAX_FRAME_DT)
 
-      // Merge slider/idle baseline with live keyboard ONCE per frame (neither
-      // changes within a frame). This merged object is the single source of truth
-      // for BOTH the physics AND the duck's animation + HUD.
+      // Decay the binary flap PULSE (the short-lived flap-field envelope a detected
+      // gesture flap raises below) so a camera flap drives the wing animation,
+      // nose-up pitch and sustained lift like a Space tap. Frame-rate independent.
+      flapPulseRef.current *= Math.exp(-FLAP_PULSE_DECAY_RATE * delta)
+      if (flapPulseRef.current < 0.01) flapPulseRef.current = 0
+
+      // MediaPipe gestures (camera mode only). Read the body's flap/lean/dive once
+      // per NEW pose frame: useFrame runs faster than pose updates, so pushing
+      // every tick would feed the velocity tracker duplicate frames and dilute the
+      // stroke; we push only when the store's landmark frame reference changes.
+      if (cameraControl) {
+        const poseFrame = useInputStore.getState().landmarks
+        if (poseFrame && poseFrame !== lastPoseFrameRef.current) {
+          lastPoseFrameRef.current = poseFrame
+          stalePoseTicksRef.current = 0
+          const flapOut = flapStrategyRef.current.push(poseFrame)
+          gestureFlapRef.current = flapOut.flap
+          if (flapOut.flapImpulse) {
+            // A completed binary flap: fire the one-shot wingbeat kick AND raise the
+            // flap pulse to full so it animates + pitches + climbs like a Space tap.
+            impulseRef.current = true
+            flapPulseRef.current = 1
+          }
+          // Body-driven steering: shoulder tilt measured against the calibrated
+          // rest angle (0 if somehow uncalibrated), EMA-smoothed against jitter.
+          const baseline = getBaseline()
+          const calib: LeanCalib = {
+            restShoulderAngle: baseline ? baseline.restShoulderAngle : 0,
+            mirrorSign: GESTURE_TURN.mirrorSign,
+            maxTiltRad: GESTURE_TURN.maxTiltRad,
+            saturationWidthRatio: GESTURE_TURN.saturationWidthRatio,
+          }
+          const rawLean = computeLean(poseFrame, calib, GESTURE_TURN.turnMode)
+          gestureLeanRef.current += GESTURE_TURN.smoothing * (rawLean - gestureLeanRef.current)
+          // Body-driven dive: dropping both arms below the shoulders noses down.
+          const rawDive = diveFromArmsDown(poseFrame, GESTURE_DIVE.startBelow, GESTURE_DIVE.fullBelow)
+          gestureDiveRef.current += GESTURE_DIVE.smoothing * (rawDive - gestureDiveRef.current)
+        } else {
+          // No new pose this tick. A short gap is just MediaPipe between detections,
+          // but a SUSTAINED gap means the body left the frame, so zero the gesture
+          // lift/steering and reset the detector so a later return does not spike.
+          stalePoseTicksRef.current += 1
+          if (stalePoseTicksRef.current > STALE_POSE_TICKS) {
+            gestureFlapRef.current = 0
+            gestureLeanRef.current = 0
+            gestureDiveRef.current = 0
+            flapStrategyRef.current.reset()
+          }
+        }
+      }
+
+      // Merge slider/idle baseline + live keyboard + (camera mode) body gestures
+      // ONCE per frame. This merged object is the single source of truth for BOTH
+      // the physics AND the duck's animation + HUD. When cameraControl is false
+      // every gesture term is 0, so this is byte-identical to keyboard-only.
       const base = actionsRef.current
       const k = keyRef.current
+      const gFlap = cameraControl ? gestureFlapRef.current + flapPulseRef.current : 0
+      const gLean = cameraControl ? gestureLeanRef.current : 0
+      const gDive = cameraControl ? gestureDiveRef.current : 0
+      const gQuack = cameraControl && useInputStore.getState().jawOpen > QUACK_THRESHOLD
       const merged: DuckActions = {
-        flap: Math.min(1, base.flap + k.flap),
+        flap: Math.min(1, base.flap + k.flap + gFlap),
         flapImpulse: false,
-        lean: Math.max(-1, Math.min(1, base.lean + k.lean)),
-        dive: Math.min(1, base.dive + k.dive),
-        quack: base.quack,
+        lean: Math.max(-1, Math.min(1, base.lean + k.lean + gLean)),
+        dive: Math.min(1, base.dive + k.dive + gDive),
+        quack: base.quack || gQuack,
         egg67: base.egg67,
         confidence: base.confidence,
       }
@@ -226,9 +320,15 @@ export function FlightRig({
         }
       }
     } else {
-      // Not advancing (frozen finish, or MP lobby/countdown): drop accumulated
-      // time so the sim can't "catch up" with a jump when it resumes.
+      // Not advancing (frozen finish, MP lobby/countdown, or a camera (re)calibrate
+      // gate): drop accumulated time so the sim can't "catch up" with a jump when it
+      // resumes. While calibrating, relax the duck to idle and drop any queued
+      // wingbeat so a Space tap (keyboard stays live) doesn't fire on resume.
       accRef.current = 0
+      if (calibrating) {
+        mergedRef.current = makeIdleActions()
+        impulseRef.current = false
+      }
     }
 
     const s = stateRef.current
@@ -247,6 +347,7 @@ export function FlightRig({
       scale={duckVisual.scale}
       modelYaw={duckVisual.modelYaw}
       crossfade={duckVisual.crossfade}
+      flapAnimSpeed={duckVisual.flapAnimSpeed}
       animCfg={animCfg}
       clipRef={clipRef}
     />

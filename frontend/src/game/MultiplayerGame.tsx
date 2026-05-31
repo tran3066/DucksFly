@@ -20,10 +20,13 @@ import { DEFAULT_ANIM_MAP } from '../avatar/animationMap'
 import type { DuckVariant } from '../avatar/loadDuck'
 import { createFlightState, DEFAULT_FLIGHT, type FlightConfig } from './flight'
 import { BOOST } from './gameConfig'
+import { FLAP_ANIM_SPEED } from './gestureConfig'
 import { FlightScene } from './FlightScene'
 import type { FlightRigProps } from './FlightRig'
 import { CrashFlash } from './CrashFlash'
 import { RemoteDucks } from './RemoteDuck'
+import { ControlModeToggle, type ControlMode } from './ModeChooser'
+import { useCalibrationStore } from '../input/calibration'
 import { raceConnection } from '../net/connection'
 import { useRace } from '../net/useRace'
 import { POSITION_SEND_HZ } from '@shared/constants'
@@ -49,8 +52,26 @@ function poseToQuat(yaw: number, pitch: number, roll: number): [number, number, 
   return [_quat.x, _quat.y, _quat.z, _quat.w]
 }
 
-export function MultiplayerGame({ onExit }: { onExit?: () => void }) {
+export function MultiplayerGame({
+  onExit,
+  controlMode,
+  onSetControlMode,
+}: {
+  onExit?: () => void
+  controlMode: ControlMode
+  onSetControlMode: (mode: ControlMode) => void
+}) {
   const race = useRace()
+  const cameraControl = controlMode === 'camera'
+
+  // Recalibrating freezes the local duck, so it is offered only OUTSIDE a live race
+  // (lobby / countdown / finished). Reset to allowed on unmount so the menu / SP is
+  // never left blocked.
+  const racing = race.phase === 'racing'
+  useEffect(() => {
+    useCalibrationStore.getState().setRecalibrateAllowed(!racing)
+    return () => useCalibrationStore.getState().setRecalibrateAllowed(true)
+  }, [racing])
 
   const stateRef = useRef<DuckState>(spawnState(0))
   const actionsRef = useRef<DuckActions>({ ...makeIdleActions(), confidence: 1 })
@@ -171,10 +192,11 @@ export function MultiplayerGame({ onExit }: { onExit?: () => void }) {
     cfgRef,
     impulseRef,
     duckRef: duckGroupRef,
-    duckVisual: { scale: 1, modelYaw: 0, crossfade: 0.25 },
+    duckVisual: { scale: 1, modelYaw: 0, crossfade: 0.25, flapAnimSpeed: FLAP_ANIM_SPEED },
     animCfg: DEFAULT_ANIM_MAP,
     clipRef,
     keyRef,
+    cameraControl,
     mergedRef: mergedActionsRef,
     mapRef,
     variant,
@@ -214,6 +236,16 @@ export function MultiplayerGame({ onExit }: { onExit?: () => void }) {
         finished={finished}
         onExit={onExit}
       />
+
+      {/* Camera/keyboard toggle, offered only outside a live race (switching mid-race
+          could pop the calibration gate and freeze your duck). */}
+      {!racing && (
+        <ControlModeToggle
+          mode={cameraControl ? 'camera' : 'keyboard'}
+          onChange={onSetControlMode}
+          style={{ top: 12, left: 12 }}
+        />
+      )}
     </div>
   )
 }
