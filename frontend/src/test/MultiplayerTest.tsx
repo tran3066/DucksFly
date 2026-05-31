@@ -2,13 +2,16 @@ import { useEffect, useState, type FormEvent } from "react";
 import type { DuckVariant } from "@shared/network";
 import { raceConnection, SERVER_URL } from "../net/connection";
 import { useRace, isHost } from "../net/useRace";
+import "./test.css";
 
 /**
- * Bare-bones multiplayer test harness — NOT the game UI. Open this page (/test.html) in
- * several browser tabs/windows to act as several players: join, ready up, host starts, then
- * use the dev buttons to push positions / ring passes at the server and watch the synced
- * state update live in every tab. Lets us verify the server end-to-end before the real
- * frontend exists.
+ * Bare-bones multiplayer test harness — NOT the game UI. Reachable two ways:
+ *   - as a view in the main app:  /?view=multiplayer
+ *   - as the standalone page:     /test.html
+ * Open it in several browser tabs/windows to act as several players: join,
+ * ready up, host starts, then use the dev buttons to push positions / ring
+ * passes at the server and watch the synced state update live in every tab.
+ * Lets us verify the server end-to-end before the real frontend exists.
  */
 
 /** Mirrors the backend MIN_PLAYERS_TO_START (src/logic/stateMachine.ts). */
@@ -16,7 +19,7 @@ const MIN_PLAYERS_TO_START = 2;
 
 const randomName = () => `Duck-${Math.floor(1000 + Math.random() * 9000)}`;
 
-export function TestClient() {
+export function MultiplayerTest() {
   const race = useRace();
   const [name, setName] = useState(randomName);
   const [variant, setVariant] = useState<DuckVariant>("male");
