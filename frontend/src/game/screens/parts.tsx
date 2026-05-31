@@ -64,7 +64,6 @@ export function RosterTable({ race }: { race: RaceSnapshot }) {
       <thead>
         <tr>
           <Th>Player</Th>
-          <Th>Duck</Th>
           <Th center>Ready</Th>
         </tr>
       </thead>
@@ -76,7 +75,6 @@ export function RosterTable({ race }: { race: RaceSnapshot }) {
               {p.id === race.sessionId ? ' (you)' : ''}
               {p.id === race.hostId ? ' · host' : ''}
             </Td>
-            <Td style={{ color: COLORS.dim }}>{p.duckVariant}</Td>
             <Td center>
               {p.ready ? (
                 <span style={{ color: COLORS.good }}>ready</span>

@@ -2,7 +2,6 @@
 // lobby or join an existing one by invite code.
 
 import { useMemo, useState, type FormEvent } from 'react'
-import type { DuckVariant } from '../../avatar/loadDuck'
 import { raceConnection } from '../../net/connection'
 import { ServerPicker } from '../../net/ServerPicker'
 import type { RaceSnapshot } from '../../net/types'
@@ -15,7 +14,7 @@ export function ConnectScreen({ race, onExit }: { race: RaceSnapshot; onExit?: (
   const profile = useMemo(getProfile, [])
   const initialCode = useMemo(getInitialRoomCode, [])
   const [name, setName] = useState(profile.name)
-  const [variant, setVariant] = useState<DuckVariant>(profile.variant)
+  const variant = profile.variant
   const [mode, setMode] = useState<'host' | 'join'>(initialCode ? 'join' : 'host')
   const [code, setCode] = useState(initialCode)
   const [showAdvanced, setShowAdvanced] = useState(false)
@@ -46,17 +45,6 @@ export function ConnectScreen({ race, onExit }: { race: RaceSnapshot; onExit?: (
         <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <Field label="Your name">
             <TextInput value={name} onChange={setName} placeholder="name" maxLength={16} />
-          </Field>
-
-          <Field label="Duck">
-            <Segmented
-              options={[
-                { id: 'male', label: 'Male' },
-                { id: 'female', label: 'Female' },
-              ]}
-              value={variant}
-              onChange={(v) => setVariant(v as DuckVariant)}
-            />
           </Field>
 
           <Segmented
