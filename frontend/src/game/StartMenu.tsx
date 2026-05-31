@@ -17,7 +17,8 @@ export function StartMenu({ onPick }: { onPick: (mode: GameMode) => void }) {
       <div style={content}>
         <div style={{ textAlign: 'center', marginBottom: 8 }}>
           <div style={title}>
-            <span style={{ fontSize: '3.4rem' }}>🦆</span> DucksFly
+            <span style={{ fontSize: '2.8rem', lineHeight: 1 }}>🦆</span>
+            <span style={{ lineHeight: 1 }}>DucksFly</span>
           </div>
           <div style={subtitle}>Flap. Bank. Dive. Race through the rings.</div>
         </div>
@@ -149,10 +150,12 @@ const content: React.CSSProperties = {
 const title: React.CSSProperties = {
   fontSize: '2.6rem',
   fontWeight: 800,
+  lineHeight: 1.1,
   letterSpacing: 0.5,
   color: '#eaf4ff',
   display: 'flex',
   alignItems: 'center',
+  justifyContent: 'center',
   gap: 12,
   textShadow: '0 4px 24px rgba(0,0,0,0.5)',
 }
@@ -173,6 +176,8 @@ const cardRow: React.CSSProperties = {
 
 const card: React.CSSProperties = {
   position: 'relative',
+  display: 'flex',
+  flexDirection: 'column',
   width: 260,
   minHeight: 230,
   padding: '28px 24px',
@@ -201,9 +206,8 @@ const cardBlurb: React.CSSProperties = {
 }
 
 const cardCta: React.CSSProperties = {
-  position: 'absolute',
-  left: 24,
-  bottom: 22,
+  marginTop: 'auto',
+  paddingTop: 16,
   fontWeight: 700,
   fontSize: '0.95rem',
 }

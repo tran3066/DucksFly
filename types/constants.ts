@@ -16,14 +16,21 @@ export const SNAPSHOT_HZ = 20;
 /** How often each client sends its own position to the server. */
 export const POSITION_SEND_HZ = 20;
 
-/** Countdown length before racing begins, in ms (docs/ARCHITECTURE.md §7: 3, 2, 1). */
-export const COUNTDOWN_MS = 3000;
+/**
+ * Countdown length before racing begins, in ms. Doubles as the asset-load grace window:
+ * the scene is already mounted behind the lobby, and this gives slower clients a moment to
+ * finish loading before the sim starts.
+ */
+export const COUNTDOWN_MS = 5000;
 
 /**
- * Distance under which two ducks count as colliding, in world units. Server-authoritative
- * (docs/ARCHITECTURE.md §3). Tune in playtesting.
+ * Once the FIRST player finishes, the rest get this long to cross the line before the race
+ * is force-ended. Keeps a race from stalling forever on players who fly off into the void.
  */
-export const COLLISION_RADIUS = 1.5;
+export const FINISH_GRACE_MS = 20_000;
+
+/** Length of a lobby invite code (server-generated, unambiguous characters). */
+export const LOBBY_CODE_LENGTH = 4;
 
 /**
  * How far behind real time remote ducks are rendered, in ms, so their sparse network

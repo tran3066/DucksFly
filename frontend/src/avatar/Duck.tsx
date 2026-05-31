@@ -33,6 +33,12 @@ export interface DuckProps {
   animCfg?: AnimMapConfig
   /** Crossfade time between clips, seconds. */
   crossfade?: number
+  /** Playback speed multiplier for the wing-flap (flight) clips. >1 = faster wingbeats. */
+  flapAnimSpeed?: number
+  /** Keep the flapping clip selected for this long (seconds) after flap last
+   *  exceeded the threshold, so a brief between-stroke dip does not flip the clip
+   *  to glide and restart the wing cycle mid-swing. */
+  flapHoldSeconds?: number
   /** Optional: the currently playing clip name is written here each frame (for HUDs). */
   clipRef?: React.RefObject<string>
 }
@@ -49,6 +55,8 @@ export const Duck = forwardRef<Group, DuckProps>(function Duck(
     modelYaw = 0,
     animCfg = DEFAULT_ANIM_MAP,
     crossfade = 0.25,
+    flapAnimSpeed = 1.8,
+    flapHoldSeconds = 0.35,
     clipRef,
   },
   ref,
@@ -56,6 +64,9 @@ export const Duck = forwardRef<Group, DuckProps>(function Duck(
   const innerRef = useRef<Group | null>(null)
   const duckRef = useRef<LoadedDuck | null>(null)
   const currentClip = useRef<string>('')
+  // Seconds left to keep the flapping (flight) clip selected after flap last
+  // crossed the threshold, so brief between-stroke dips do not restart the cycle.
+  const flapHoldRef = useRef(0)
   // Base scale that normalizes the FBX to TARGET_SIZE, plus the raw (unscaled)
   // center/floor so we can recenter correctly at any scale multiplier.
   const fit = useRef({ scale: 1, cx: 0, cz: 0, minY: 0 })
@@ -105,13 +116,32 @@ export const Duck = forwardRef<Group, DuckProps>(function Duck(
     duck.scene.scale.setScalar(s)
     duck.scene.position.set(-fit.current.cx * s, -fit.current.minY * s, -fit.current.cz * s)
     duck.scene.rotation.y = modelYaw
-    // Animation: crossfade only when the chosen clip changes.
-    const want = pickClip(actionsRef.current, animCfg)
+    // Animation. Hold the "flapping" state briefly after flap dips below the
+    // threshold so a between-stroke lull does not flip flight -> glide -> flight
+    // and restart the wing cycle mid-swing.
+    const a = actionsRef.current
+    if (a.flap > animCfg.flapActiveThreshold) flapHoldRef.current = flapHoldSeconds
+    else flapHoldRef.current = Math.max(0, flapHoldRef.current - dt)
+    const flapping = a.flap > animCfg.flapActiveThreshold || flapHoldRef.current > 0
+
+    // Pick the clip from the (held) flapping state. During the hold we force flap
+    // just over the threshold so pickClip stays on the flight clip, without
+    // touching the real action the physics reads.
+    const want = pickClip(
+      flapping ? { ...a, flap: Math.max(a.flap, animCfg.flapActiveThreshold + 0.001) } : a,
+      animCfg,
+    )
     if (want !== currentClip.current) {
       duck.play(want, crossfade)
       currentClip.current = want
       if (clipRef) clipRef.current = want
     }
+    // Wingbeat speed scales with how hard the player is flapping: a gentle flap
+    // gives slow wings, a hard flap ramps up to flapAnimSpeed. Normal speed when
+    // gliding or idle. (Climb rate and nose-up pitch already scale with flap in
+    // the flight model, so wings, lean and ascent all track the swing together.)
+    const animFlap = Math.min(1, Math.max(0, a.flap))
+    duck.mixer.timeScale = flapping ? 1 + animFlap * (flapAnimSpeed - 1) : 1
     duck.update(dt)
   })
 

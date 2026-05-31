@@ -9,6 +9,9 @@ import { RaceRoom } from "./rooms/RaceRoom";
  */
 export function createGameServer(): Server {
   const gameServer = new Server({ transport: new WebSocketTransport() });
-  gameServer.define("race", RaceRoom);
+  // filterBy(["code"]) groups rooms by their invite code: the host creates a room with a
+  // client-generated code, and `client.join("race", { code })` matches that exact room
+  // (or throws "not found" if there isn't one). This is the built-in private-lobby pattern.
+  gameServer.define("race", RaceRoom).filterBy(["code"]);
   return gameServer;
 }

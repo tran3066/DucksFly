@@ -68,7 +68,7 @@ export async function loadDuck(variant: DuckVariant = 'male'): Promise<LoadedDuc
         std.needsUpdate = true
       }
       if (Array.isArray(mesh.material)) mesh.material.forEach(apply)
-      else apply(mesh.material)
+    else apply(mesh.material)
     }
   })
 

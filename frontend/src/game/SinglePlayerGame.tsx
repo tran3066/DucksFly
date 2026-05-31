@@ -16,11 +16,28 @@ import { DEFAULT_FOLLOW } from '../avatar/followConfig'
 import { DEFAULT_ANIM_MAP, type AnimMapConfig } from '../avatar/animationMap'
 import { createFlightState, DEFAULT_FLIGHT, type FlightConfig } from './flight'
 import { BOOST, BOOST_SLIDERS } from './gameConfig'
+import { FLAP_ANIM_SPEED } from './gestureConfig'
 import { FlightScene } from './FlightScene'
 import type { FlightRigProps } from './FlightRig'
 import { CrashFlash } from './CrashFlash'
+import { ControlModeToggle, type ControlMode } from './ModeChooser'
+import { useCalibrationStore } from '../input/calibration'
+import { Overlay, Panel, Button, KeyCap, formatTime, COLORS, FONT, MONO, UI_KEYFRAMES } from './ui'
 
-export function SinglePlayerGame({ onExit }: { onExit?: () => void }) {
+export function SinglePlayerGame({
+  onExit,
+  controlMode,
+  onSetControlMode,
+}: {
+  onExit?: () => void
+  controlMode: ControlMode
+  onSetControlMode: (mode: ControlMode) => void
+}) {
+  const cameraControl = controlMode === 'camera'
+  // Single-player: recalibrating is always fine (it just freezes this one duck).
+  useEffect(() => {
+    useCalibrationStore.getState().setRecalibrateAllowed(true)
+  }, [])
   const stateRef = useRef<DuckState>(createFlightState())
   const actionsRef = useRef<DuckActions>({ ...makeIdleActions(), confidence: 1 }) // slider baseline
   const mergedActionsRef = useRef<DuckActions>(makeIdleActions()) // sliders + keyboard (drives anim + HUD)
@@ -45,7 +62,17 @@ export function SinglePlayerGame({ onExit }: { onExit?: () => void }) {
 
   const [debug, setDebug] = useState(false)
   const [finished, setFinished] = useState(false)
-  const onFinish = useCallback(() => setFinished(true), [])
+  // Wall-clock run timer: starts on (re)spawn, frozen at the finish line.
+  const runStartRef = useRef(performance.now())
+  const [finishStats, setFinishStats] = useState<{ ms: number; rings: number; distance: number } | null>(null)
+  const onFinish = useCallback(() => {
+    setFinishStats({
+      ms: performance.now() - runStartRef.current,
+      rings: passedRingsRef.current.size,
+      distance: stateRef.current.distance,
+    })
+    setFinished(true)
+  }, [])
   const [crashAt, setCrashAt] = useState(0)
   const onCrash = useCallback(() => setCrashAt(performance.now()), [])
 
@@ -58,7 +85,9 @@ export function SinglePlayerGame({ onExit }: { onExit?: () => void }) {
     passedRingsRef.current = new Set()
     ringPulseAtRef.current = new Map()
     boostRef.current = 0
+    runStartRef.current = performance.now()
     setFinished(false)
+    setFinishStats(null)
     setPassedRingIds(new Set())
     setRingPulseAt(new Map())
   }, [])
@@ -182,10 +211,16 @@ export function SinglePlayerGame({ onExit }: { onExit?: () => void }) {
     cfgRef,
     impulseRef,
     duckRef: duckGroupRef,
-    duckVisual: { scale: duckVisual.scale, modelYaw: duckVisual.modelYaw, crossfade: duckVisual.crossfade },
+    duckVisual: {
+      scale: duckVisual.scale,
+      modelYaw: duckVisual.modelYaw,
+      crossfade: duckVisual.crossfade,
+      flapAnimSpeed: FLAP_ANIM_SPEED,
+    },
     animCfg,
     clipRef,
     keyRef,
+    cameraControl,
     mergedRef: mergedActionsRef,
     mapRef,
     variant: 'male',
@@ -203,7 +238,8 @@ export function SinglePlayerGame({ onExit }: { onExit?: () => void }) {
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0 }}>
+    <div style={{ position: 'fixed', inset: 0, fontFamily: FONT }}>
+      <style>{UI_KEYFRAMES}</style>
       <Leva hidden={!debug} />
       <FlightScene
         map={map}
@@ -220,11 +256,18 @@ export function SinglePlayerGame({ onExit }: { onExit?: () => void }) {
         boostRef={boostRef}
         passedRingsRef={passedRingsRef}
       />
-      <ControlsHint />
+      <ControlsHint cameraControl={cameraControl} />
       <DebugToggle debug={debug} onToggle={() => setDebug((d) => !d)} />
+      <ControlModeToggle
+        mode={cameraControl ? 'camera' : 'keyboard'}
+        onChange={onSetControlMode}
+        style={{ top: 48, right: 12 }}
+      />
       {onExit && <ExitButton onExit={onExit} />}
       <CrashFlash at={crashAt} />
-      {finished && <FinishOverlay stateRef={stateRef} onReset={resetState} />}
+      {finished && finishStats && (
+        <FinishOverlay stats={finishStats} onReset={resetState} onExit={onExit} />
+      )}
     </div>
   )
 }
@@ -316,89 +359,83 @@ function Hud({
 }
 
 function FinishOverlay({
-  stateRef,
+  stats,
   onReset,
+  onExit,
 }: {
-  stateRef: React.RefObject<DuckState>
+  stats: { ms: number; rings: number; distance: number }
   onReset: () => void
+  onExit?: () => void
 }) {
-  const [stats, setStats] = useState<{ distance: number; speed: number } | null>(null)
-  useEffect(() => {
-    const s = stateRef.current
-    setStats({ distance: s.distance, speed: s.speed })
-  }, [stateRef])
-
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        inset: 0,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'rgba(8,14,22,0.45)',
-        backdropFilter: 'blur(2px)',
-      }}
-    >
-      <div
-        style={{
-          padding: '28px 36px',
-          borderRadius: 14,
-          background: 'rgba(20,30,40,0.92)',
-          color: '#eaf4ff',
-          font: '15px/1.6 ui-monospace, monospace',
-          textAlign: 'center',
-          minWidth: 260,
-          boxShadow: '0 12px 48px rgba(0,0,0,0.4)',
-        }}
-      >
-        <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: 2, color: '#ffd24a' }}>
-          FINISH
-        </div>
-        <div style={{ margin: '14px 0', opacity: 0.85 }}>
-          <div>distance flown: {(stats?.distance ?? 0).toFixed(0)} m</div>
-          <div>final speed: {(stats?.speed ?? 0).toFixed(1)} u/s</div>
-        </div>
-        <button
-          type="button"
-          onClick={onReset}
-          style={{
-            marginTop: 6,
-            padding: '8px 20px',
-            borderRadius: 8,
-            border: 'none',
-            background: '#3b82f6',
-            color: '#fff',
-            font: '14px/1 ui-monospace, monospace',
-            cursor: 'pointer',
-          }}
-        >
-          fly again
-        </button>
-      </div>
+  const stat = (label: string, value: string) => (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+      <span style={{ fontFamily: MONO, fontSize: '1.5rem', fontWeight: 700, color: COLORS.text }}>
+        {value}
+      </span>
+      <span style={{ color: COLORS.dim, fontSize: '0.78rem', letterSpacing: 0.5 }}>{label}</span>
     </div>
+  )
+  return (
+    <Overlay dim={0.5}>
+      <Panel width={420} style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: '1.8rem', fontWeight: 800, color: COLORS.gold, marginBottom: 4 }}>
+          🏁 Finish!
+        </div>
+        <p style={{ color: COLORS.dim, margin: '0 0 20px', fontSize: '0.9rem' }}>Nice flying.</p>
+        <div style={{ display: 'flex', justifyContent: 'space-around', margin: '0 0 22px' }}>
+          {stat('time', formatTime(stats.ms))}
+          {stat('rings', String(stats.rings))}
+          {stat('distance', `${stats.distance.toFixed(0)}m`)}
+        </div>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+          <Button variant="primary" accent={COLORS.accentBlue} onClick={onReset}>
+            Fly again
+          </Button>
+          {onExit && (
+            <Button variant="ghost" onClick={onExit}>
+              ← Menu
+            </Button>
+          )}
+        </div>
+      </Panel>
+    </Overlay>
   )
 }
 
-function ControlsHint() {
+function ControlsHint({ cameraControl }: { cameraControl: boolean }) {
   return (
     <div
       style={{
         position: 'absolute',
-        bottom: 14,
+        bottom: 16,
         left: '50%',
         transform: 'translateX(-50%)',
         padding: '8px 16px',
-        borderRadius: 8,
-        background: 'rgba(20,30,40,0.72)',
-        color: '#eaf4ff',
-        font: '13px/1 ui-monospace, monospace',
-        letterSpacing: 0.5,
+        borderRadius: 12,
+        background: 'rgba(10,18,30,0.66)',
+        color: COLORS.text,
+        fontFamily: FONT,
+        fontSize: '0.85rem',
         pointerEvents: 'none',
-        backdropFilter: 'blur(4px)',
+        backdropFilter: 'blur(6px)',
+        border: '1px solid rgba(120,150,180,0.18)',
       }}
     >
-      SPACE flap · A / D lean · W dive
+      {cameraControl ? (
+        <span>
+          Flap your arms to fly · lean your shoulders to turn · drop your arms to dive ·
+          open your mouth to quack
+        </span>
+      ) : (
+        <>
+          <KeyCap>Space</KeyCap> flap
+          <span style={{ margin: '0 8px', color: COLORS.faint }}>·</span>
+          <KeyCap>A</KeyCap>
+          <KeyCap>D</KeyCap> lean
+          <span style={{ margin: '0 8px', color: COLORS.faint }}>·</span>
+          <KeyCap>W</KeyCap> dive
+        </>
+      )}
     </div>
   )
 }

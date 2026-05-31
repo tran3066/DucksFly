@@ -1,4 +1,4 @@
-import { Schema, MapSchema, ArraySchema, type } from "@colyseus/schema";
+import { Schema, MapSchema, type } from "@colyseus/schema";
 import type { RacePhase } from "@shared/network";
 
 /**
@@ -35,13 +35,6 @@ export class QuatSchema extends Schema {
   }
 }
 
-export class RingSchema extends Schema {
-  @type("number") id = 0;
-  @type(Vec3Schema) pos = new Vec3Schema();
-  @type(QuatSchema) quat = new QuatSchema();
-  @type("number") radius = 0;
-}
-
 export class PlayerSchema extends Schema {
   @type("string") id = "";
   @type("string") name = "";
@@ -49,20 +42,33 @@ export class PlayerSchema extends Schema {
   @type(Vec3Schema) pos = new Vec3Schema();
   @type(Vec3Schema) vel = new Vec3Schema();
   @type(QuatSchema) quat = new QuatSchema();
+  /** Rings flown through so far (client-reported, display only). */
   @type("number") ringsPassed = 0;
-  @type("number") lap = 0;
   @type("number") rank = 0;
-  @type("boolean") spunOut = false;
+  /** True once the client reports crossing the finish line (server-latched). */
   @type("boolean") finished = false;
   @type("boolean") ready = false;
+  /** Tree/ring crashes this race (client-reported, display only — never affects rank). */
+  @type("number") collisions = 0;
+  /** Epoch ms this player finished, or 0 if not finished (stamped on the server clock). */
+  @type("number") finishTime = 0;
 }
 
 export class RaceState extends Schema {
   @type("string") phase: RacePhase = "lobby";
+  /** Short, server-generated invite code for this lobby. */
+  @type("string") code = "";
+  /** Seed every client builds the identical course from (rings included). No server geometry. */
   @type("number") mapSeed = 0;
-  @type([RingSchema]) ringLayout = new ArraySchema<RingSchema>();
   /** Epoch ms when the countdown ends (0 outside of countdown). */
   @type("number") countdownEndsAt = 0;
+  /** Epoch ms when racing began (0 outside racing/finished); base for elapsed times. */
+  @type("number") raceStartAt = 0;
+  /**
+   * Epoch ms the race will auto-end after the FIRST player finishes (first finish + grace).
+   * 0 while nobody has finished yet; drives the "others have Xs left" client countdown.
+   */
+  @type("number") finishWindowEndsAt = 0;
   /** sessionId of the host (the only player allowed to start); "" if the room is empty. */
   @type("string") hostId = "";
   @type({ map: PlayerSchema }) players = new MapSchema<PlayerSchema>();

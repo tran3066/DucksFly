@@ -46,9 +46,17 @@ describe('flightStep (Unity-port)', () => {
     expect(s.pitch).toBeGreaterThan(0.1) // clearly toward the ground, not just slight
   })
 
-  it('no flap -> descends gently (loses altitude)', () => {
+  it('no flap and no dive -> holds altitude (no passive sink)', () => {
+    // gravity is 0: the bird holds level when neither flapping nor diving, so it
+    // does NOT constantly lose altitude -- only an active dive descends.
     const start = createFlightState().position[1]
-    const s = run(act({ flap: 0 }), 60)
+    const s = run(act({ flap: 0, dive: 0 }), 120)
+    expect(s.position[1]).toBeCloseTo(start, 1)
+  })
+
+  it('dive -> descends (loses altitude)', () => {
+    const start = createFlightState().position[1]
+    const s = run(act({ dive: 1 }), 60)
     expect(s.position[1]).toBeLessThan(start)
   })
 
