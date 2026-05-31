@@ -1,8 +1,8 @@
-import { PhysicsSandbox } from './test/PhysicsSandbox'
+import { DuckPreview } from './duck/DuckPreview'
 
 // Person C physics test harness. Swap this out once the real game shell exists.
 function App() {
-  return <PhysicsSandbox />
+  return <DuckPreview />
 }
 
 export default App
