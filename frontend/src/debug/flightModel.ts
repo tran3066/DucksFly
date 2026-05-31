@@ -34,7 +34,7 @@ export interface FlightConfig {
   lateralResponse: number
   lateralRange: number // soft world-X clamp (0 = unlimited)
   // Pitch (visual body lean). Positive pitch = nose DOWN, negative = nose UP.
-  pitchFromVy: number // base coupling: climb -> nose up, sink -> nose down
+  pitchFromVy: number // climb -> nose up only; passive sink stays level (neutral glides flat, never nose-dives)
   flapPitchDeg: number // extra nose-UP while flapping (lean up on swing)
   divePitchDeg: number // extra nose-DOWN while diving (lean toward the ground)
   maxPitchDeg: number
@@ -165,11 +165,12 @@ export function flightStep(
   }
 
   // Visual body lean (positive = nose down, negative = nose up):
-  //   - base coupling from vY (climb -> up, sink -> down)
+  //   - vY coupling is nose-UP ONLY (Math.max(vY,0)): climbing tips the nose up,
+  //     but passive sinking does NOT tip it down, so doing nothing glides level.
   //   - flap adds a nose-UP lean (the duck leans up as it powers a swing)
-  //   - dive adds a strong nose-DOWN lean toward the ground
+  //   - dive (W) is the ONLY source of nose-DOWN, leaning toward the ground.
   const pitchTarget = clamp(
-    -cfg.pitchFromVy * vY - flap * cfg.flapPitchDeg * DEG + dive * cfg.divePitchDeg * DEG,
+    -cfg.pitchFromVy * Math.max(vY, 0) - flap * cfg.flapPitchDeg * DEG + dive * cfg.divePitchDeg * DEG,
     -cfg.maxPitchDeg * DEG,
     cfg.maxPitchDeg * DEG,
   )
