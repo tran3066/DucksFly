@@ -76,3 +76,17 @@ export function Tree({
 export function Bush(props: ThreeElements['group']) {
   return <NatureProp file="Bush_01.fbx" scale={0.01} {...props} />
 }
+
+/** The available ground tiles in the pack (Ground_01.fbx … Ground_03.fbx). */
+export type GroundVariant = 1 | 2 | 3
+export const GROUND_VARIANTS: GroundVariant[] = [1, 2, 3]
+
+// Ground tiles are modular ~30-unit squares — about 16x smaller in raw units
+// than the trees — so they need a much larger scale than the foliage presets.
+// At 0.4 each tile is ~12 world units square (Ground_02 carries a raised hill).
+export function Ground({
+  variant = 1,
+  ...props
+}: ThreeElements['group'] & { variant?: GroundVariant }) {
+  return <NatureProp file={`Ground_0${variant}.fbx`} scale={0.4} {...props} />
+}
