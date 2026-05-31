@@ -352,7 +352,7 @@ function RaceStats({
       }}
     >
       <BigStat label="TIME" value={formatTime(snap.ms)} />
-      <BigStat label="RINGS" value={`${snap.rings}`} suffix={`/ ${ringCount}`} accent={COLORS.accent} />
+      <BigStat label="RINGS" value={`${snap.rings}`} suffix={`/ ${ringCount}`} accent={COLORS.gold} />
     </div>
   )
 }
@@ -362,7 +362,7 @@ function BigStat({
   label,
   value,
   suffix,
-  accent = COLORS.text,
+  accent = COLORS.hudText,
 }: {
   label: string
   value: string
@@ -385,7 +385,7 @@ function BigStat({
         gap: 2,
       }}
     >
-      <span style={{ color: COLORS.dim, fontSize: '0.72rem', letterSpacing: 2, fontWeight: 700 }}>
+      <span style={{ color: COLORS.hudDim, fontSize: '0.72rem', letterSpacing: 2, fontWeight: 700 }}>
         {label}
       </span>
       <span
@@ -399,7 +399,7 @@ function BigStat({
       >
         {value}
         {suffix && (
-          <span style={{ fontSize: '1.1rem', color: COLORS.dim, fontWeight: 600, marginLeft: 4 }}>
+          <span style={{ fontSize: '1.1rem', color: COLORS.hudDim, fontWeight: 600, marginLeft: 4 }}>
             {suffix}
           </span>
         )}
