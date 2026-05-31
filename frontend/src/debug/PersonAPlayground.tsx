@@ -242,10 +242,25 @@ export function PersonAPlayground() {
   })
   const map = useMemo(() => buildMap(world.seed), [world.seed])
   const mapRef = useRef<MapDef>(map)
-  mapRef.current = map
+
+  // Reset the run whenever the seed (and thus the map) changes. Split to satisfy
+  // both hook rules at the root rather than suppress them:
+  //   - ref writes (mapRef/stateRef/finishedRef) happen in an effect, never
+  //     during render (react-hooks/refs).
+  //   - the one React state we must clear (the finish overlay) is adjusted during
+  //     render via React's documented previous-value pattern, which is the
+  //     recommended alternative to resetting state inside an effect
+  //     (avoids react-hooks/set-state-in-effect and the extra render pass).
+  const [prevMap, setPrevMap] = useState(map)
+  if (prevMap !== map) {
+    setPrevMap(map)
+    if (finished) setFinished(false)
+  }
   useEffect(() => {
-    resetState()
-  }, [world.seed, resetState])
+    mapRef.current = map
+    stateRef.current = createFlightState()
+    finishedRef.current = false
+  }, [map])
 
   const actions = useControls('Actions (manual)', {
     flap: { value: 0, min: 0, max: 1, step: 0.01 },

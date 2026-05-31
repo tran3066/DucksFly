@@ -67,7 +67,8 @@ export async function loadDuck(variant: DuckVariant = 'male'): Promise<LoadedDuc
         std.roughness = 0.8
         std.needsUpdate = true
       }
-      Array.isArray(mesh.material) ? mesh.material.forEach(apply) : apply(mesh.material)
+      if (Array.isArray(mesh.material)) mesh.material.forEach(apply)
+    else apply(mesh.material)
     }
   })
 
