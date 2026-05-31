@@ -126,7 +126,7 @@ function buildCheckpoints(cfg: MapConfig): Checkpoint[] {
   for (let z = 0; z < cfg.length; z += cfg.checkpointGap) {
     checkpoints.push({ id: id++, z, isFinish: false });
   }
-  checkpoints.push({ id: id++, z: cfg.length, isFinish: true });
+  checkpoints.push({ id: id, z: cfg.length, isFinish: true });
   return checkpoints;
 }
 
