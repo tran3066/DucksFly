@@ -1,9 +1,15 @@
 # DucksFly: Visual Design and Three.js Art Direction
 
 This document describes how DucksFly should look, and how to build that look in code.
-It is the bridge between the art direction (the feel we are going for) and the concrete
-3D setup (lights, materials, colors). For what the game is, see [PRD.md](./PRD.md); for
-how it works, see [ARCHITECTURE.md](./ARCHITECTURE.md).
+It covers both the **3D world** (lights, materials, terrain) and the **2D interface**
+(menus, HUD, calibration). For what the game is, see [PRD.md](./PRD.md); for how it
+works, see [ARCHITECTURE.md](./ARCHITECTURE.md).
+
+**UI source of truth (interactive mock):**
+[frontend/design_prototype/ducksfly-ui-new.html](../frontend/design_prototype/ducksfly-ui-new.html).
+Open that file in a browser and use the top switcher (`Mode`, `Menu`, `Calibrate`,
+`In-Game`, `Finish`) to preview each screen. The React game at `?view=game` should
+converge on this spec.
 
 Terms specific to 3D graphics and lighting are explained the first time they appear, and
 collected in the [glossary](#10-glossary) at the end. The 3D library names (three.js,
@@ -57,11 +63,21 @@ that the whole project refers to, so colors stay consistent).
 | Duck, male | from `mallard-male.png` | green head, brown body |
 | Duck, female | from `mallard-female.png` | brown |
 | Danger / crash | `#FF5C5C` | the flash on a crash, and hazard accents |
-| UI text | `#1E2A36` | dark slate, used for text on the light interface |
+| Ring orange (UI accent) | `#FF8A1F` | rings, primary CTAs, brand emphasis in `Fly` |
+| Cyan (solo / camera) | `#29C2E8` | single-player and camera-mode accents |
+| Green (success / tracking) | `#57B94F` | calibration checks, “tracking” states |
+| UI text on bright panels | `#20303F` | slate body text on cream cards |
+| UI text muted | `#5E7184` | secondary copy on bright panels |
+| Bright panel fill | `#F4F9FD` | menus, modals, finish card |
+| HUD panel fill | `rgba(16,27,38,.72)` | in-game overlays over the 3D scene |
+| HUD text | `#EAF6FF` | primary copy on dark HUD panels |
+| HUD text muted | `#9FC0D4` | labels and secondary HUD copy |
+| Page sky wash | `#BFE1F7` | full-screen backdrop behind bright UI |
 
-Keep these in one file (for example `src/theme/palette.ts`) so the sky, the fog, and the
-lights all refer to the same horizon color. That shared color is what makes the depth
-illusion work (see section 3).
+Keep 3D colors in one file (for example `src/theme/palette.ts`) so the sky, the fog, and
+the lights all refer to the same horizon color. That shared color is what makes the depth
+illusion work (see section 3). UI tokens should live beside them (or in
+`src/game/ui.tsx` CSS variables) so menus and HUD stay aligned with the prototype.
 
 ---
 
@@ -273,38 +289,185 @@ Performance budget (this must hold up with eight ducks at a smooth frame rate):
 
 ---
 
-## 7. The Interface and Screens
+## 7. The Interface (Low-Poly UI)
 
-Keep the flat, 2D interface consistent with the world: rounded, light, and warm.
+The 2D layer uses a **low-poly UI** language that matches the 3D world: faceted clip
+corners, warm orange ring accents, cyan solo/camera accents, and a bright daytime sky
+behind menus. **Two surface treatments** keep play readable:
 
-| Screen | What it contains |
+| Surface | When | Look |
+|---|---|---|
+| **Bright panels** | Menus, mode picker, calibration, finish card | Cream `#F4F9FD` cards, dark slate text, “pressed” gradient buttons |
+| **Dark HUD panels** | Anything over the live 3D scene | Translucent navy `rgba(16,27,38,.72)`, light text, mono stats |
+
+Simulation stays in WebGL; text-heavy UI stays in **DOM** (see
+[ARCHITECTURE.md](./ARCHITECTURE.md)). Do not draw HUD labels in the canvas unless there
+is a strong reason.
+
+### 7.1 Visual language
+
+- **Faceted corners:** panels and buttons use a clipped corner (13px chamfer), not plain
+  `border-radius`, via a shared `--cut` clip-path polygon.
+- **Depth on buttons:** primary buttons use a 4px “physical” press: resting shadow
+  `0 6px 0 rgba(20,40,60,.18)`, active state shifts down 4px.
+- **Brand mark:** low-poly duck SVG beside the wordmark; “Fly” in orange
+  (`#FF8A1F`), rest of title in white with a soft shadow (readable on sky).
+- **Background:** procedural low-poly sky mesh (triangulated gradient + block clouds +
+  faceted hills + floating orange rings). A light grain overlay (~5% opacity) adds
+  texture. The in-game HUD screen uses a simpler static sky gradient as placeholder
+  until the live scene shows through.
+- **Motion:** staggered `rise` entrance (0.5s, cubic-bezier `.2,.7,.3,1`) on menu
+  blocks; respect `prefers-reduced-motion` (disable entrance and ambient loops).
+- **Desktop-first:** below 980px width, hide the game UI and show a single message:
+  “This is a desktop experience.”
+
+### 7.2 Typography
+
+Load from Google Fonts (see prototype `<head>`):
+
+| Role | Family | Weights | Use |
+|---|---|---|---|
+| Display | **Fredoka** | 500, 600, 700 | Titles, buttons, card headings |
+| Body | **Outfit** | 400–800 | Paragraphs, form labels |
+| Mono | **JetBrains Mono** | 400, 500, 700 | HUD stats, invite codes, key caps |
+
+```html
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+```
+
+### 7.3 UI color tokens (CSS)
+
+These mirror `:root` in the prototype:
+
+```css
+:root {
+  --orange: #ff8a1f;       /* rings, primary CTA, brand accent */
+  --orange-deep: #f06d10;
+  --cyan: #29c2e8;         /* solo / camera */
+  --cyan-deep: #15a6cc;
+  --green: #57b94f;        /* success, tracking */
+  --green-deep: #3f9a3f;
+
+  --slate: #20303f;        /* text on bright panels */
+  --slate-dim: #5e7184;
+  --cream: #f4f9fd;        /* bright panel fill */
+  --line-d: rgba(32, 48, 63, 0.12);
+
+  --hud: rgba(16, 27, 38, 0.72);
+  --hud-line: rgba(180, 225, 255, 0.2);
+  --hud-txt: #eaf6ff;
+  --hud-dim: #9fc0d4;
+
+  --r: 13px;
+  --cut: polygon(0 var(--r), var(--r) 0, 100% 0, 100% calc(100% - var(--r)),
+    calc(100% - var(--r)) 100%, 0 100%);
+  --shadow: 0 20px 44px -20px rgba(20, 40, 60, 0.5);
+
+  --f-disp: "Fredoka", system-ui, sans-serif;
+  --f-body: "Outfit", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+```
+
+**Button variants**
+
+| Class | Fill | Text | Use |
+|---|---|---|---|
+| `btn-orange` | gradient orange → orange-deep | white | Primary actions (start, fly again) |
+| `btn-cyan` | gradient cyan → cyan-deep | white | Camera / solo emphasis |
+| `btn-ghost` | white + border | slate | Secondary (keyboard, menu) |
+
+### 7.4 Components
+
+| Component | Rules |
 |---|---|
-| Home | Title, the "flap to fly" tagline, a Play button, and the duck appearance picker |
-| Lobby | Ducks idling or walking, player nameplates, and a ready or start control |
-| Countdown | A large 3, 2, 1 before the race begins |
-| Race interface | Speed, rank or position, course progress, the off-screen-duck indicator, and quack feedback |
-| Leaderboard | Final standings, times, and a play-again control |
+| **Card** | `background: var(--cream)`, `clip-path: var(--cut)`, top gloss gradient overlay |
+| **Key cap** | White chip, mono font, mini chamfer, `0 2px 0` shadow — control hints |
+| **Hints bar** | Inline key caps separated by `·`; slate-dim labels |
+| **Check row** (calibration) | White row, diamond status icon (green = ok, grey = wait) |
+| **Gauge** | Chamfered track; fill animates green → cyan for flap test |
+| **HUD panel** | `hpanel`: dark fill, blur, chamfer, mono rows with label / value |
+| **Stat block** | Large mono number (time = cyan, rings = orange) + small caps label |
 
-- Interface text is dark slate `#1E2A36` on a light, slightly see-through panel, so it
-  stays readable over a bright sky.
-- Nameplates are labels that always face the camera, floating above each remote duck
-  (drei provides helpers for this).
-- The "six-seven" easter egg shows a punchy animated "6-7" on screen with a sound when
-  the hand sign is detected.
+### 7.5 Screens (prototype → React)
+
+| Prototype `#id` | React component(s) | Notes |
+|---|---|---|
+| `mode` | `ModeChooser` | Overlays start menu until camera vs keyboard is chosen |
+| `menu` | `StartMenu` | Single / multiplayer cards; hints bar at bottom |
+| `calib` | `WebcamPanel` / calibration flow | Two-column: live cam + checklist + flap gauge |
+| `hud` | `RaceHud`, `SinglePlayerGame` debug HUD | See layout below; multiplayer also uses lobby/results overlays |
+| `finish` | `FinishedWaitingScreen`, `ResultsScreen` | Finish card: time, rings, distance, fly again / menu |
+
+**Not in the HTML prototype but required in the shipped game:** `ConnectScreen` (host/join),
+`LobbyScreen` (invite code, roster, ready/start). Style them as **bright panels** like
+`mode` / `menu`, not dark HUD.
+
+### 7.6 In-game HUD layout
+
+Keep the **center and lower-middle of the viewport clear** during flight. Persistent chrome
+should cover roughly **≤25%** of the viewport on desktop.
+
+```
++------------------------------------------------------------------+
+| [FLIGHT telemetry]     [ TIME ] [ RINGS ]     [mode][debug][menu]|
+|  speed, alt, input      top-center goals       top-right controls |
+|                                                                   |
+|                         [ NEXT RING ▼ ]                          |
+|                         (compass, center-top)                     |
+|                                                                   |
+| [YOUR WINGS / flap power]              [ Space · A/D · W hints ]   |
+|  bottom-left (camera mode)              bottom-center pill       |
++------------------------------------------------------------------+
+```
+
+| Zone | Content |
+|---|---|
+| Top-left | `FLIGHT` block: speed, altitude, distance; `INPUT` block: flap, lean, dive, confidence |
+| Top-center | Two stat chips: **TIME** (cyan), **RINGS** (orange, e.g. `3/12`) |
+| Top-right | Control mode toggle, debug flag, back to menu |
+| Center-top | “Next ring” chevron + label (optional; hide when no target) |
+| Bottom-left | Camera-only: skeleton preview + flap power gauge |
+| Bottom-center | Keyboard/camera hints (single compact pill) |
+
+**Multiplayer additions** (not all shown in prototype HUD mock):
+
+- Top-center **finish banner** when someone crosses the line (grace countdown).
+- Top-right **leaderboard** list during race (keep narrow; scroll if >4 players).
+- Full-screen **countdown** overlay: large mono numerals, `GO!` in green.
+
+### 7.7 3D ↔ UI consistency
+
+| 3D element | UI echo |
+|---|---|
+| Orange boost rings | `--orange` on HUD ring count, compass, CTAs |
+| Daytime sky gradient | Page background and bright-screen wash `#BFE1F7` |
+| Low-poly terrain | Faceted panel corners and SVG duck mark |
+| Cyan water / cool accents | Camera mode, time stat |
+| Green grass | Success checks, tracking indicator |
+
+Nameplates above remote ducks remain **3D** (billboard text), not DOM HUD.
+
+### 7.8 Easter egg
+
+The “six-seven” hand sign still triggers a punchy on-screen **6-7** with sound when
+detected; style it with display font and orange accent so it fits the UI kit.
 
 ---
 
 ## 8. Design Tokens: Quick Reference for Implementers
 
+### 3D world (`src/theme/palette.ts`)
+
 ```ts
-// src/theme/palette.ts  (the single source of truth for sky, fog, and lights)
+// Single source of truth for sky, fog, and lights
 export const SKY_TOP     = '#7EC8FF'
-export const SKY_HORIZON = '#D7F0FF'  // also the fog color AND the background color
+export const SKY_HORIZON = '#D7F0FF'  // also fog AND Canvas background
 export const SUN_COLOR   = '#FFF4D6'
 export const AMBIENT     = '#BFE3FF'
 export const HEMI_SKY    = '#9FD8FF'
 export const HEMI_GROUND = '#8FCB6B'
-export const RING_ACTIVE = '#FFC93C'
+export const RING_ACTIVE = '#FFC93C'  // 3D ring mesh (close to UI --orange)
 export const DANGER      = '#FF5C5C'
 
 export const SUN_POSITION: [number, number, number] = [-40, 60, 30]
@@ -315,6 +478,36 @@ export const FOG_FAR  = 300
 The golden rule: the background color, the fog color, and the `<Sky>` horizon must all be
 the same value. When they match, low-poly geometry melts into the horizon and the world
 feels huge for almost no extra geometry.
+
+### 2D UI (target: `src/game/ui.tsx` or shared `src/theme/ui.css`)
+
+```ts
+export const UI = {
+  orange: '#ff8a1f',
+  orangeDeep: '#f06d10',
+  cyan: '#29c2e8',
+  cyanDeep: '#15a6cc',
+  green: '#57b94f',
+  slate: '#20303f',
+  slateDim: '#5e7184',
+  cream: '#f4f9fd',
+  hudBg: 'rgba(16,27,38,0.72)',
+  hudText: '#eaf6ff',
+  hudDim: '#9fc0d4',
+  skyWash: '#bfe1f7',
+  radius: 13,
+  shadow: '0 20px 44px -20px rgba(20, 40, 60, 0.5)',
+} as const
+
+export const FONTS = {
+  display: '"Fredoka", system-ui, sans-serif',
+  body: '"Outfit", system-ui, sans-serif',
+  mono: '"JetBrains Mono", ui-monospace, monospace',
+} as const
+```
+
+Implement `--cut` clip-path and button press shadows once in `GameUiStyles` (or a CSS
+module) and reuse on every panel and button.
 
 ---
 
@@ -336,6 +529,13 @@ A short summary of the reasoning, so future changes do not accidentally break th
 
 ## 10. Glossary
 
+- Low-poly UI: 2D interface that echoes low-poly 3D — chamfered panels, flat color
+  blocks, and simple shadows instead of glassmorphism or SaaS dashboard layouts.
+- Bright panel / dark HUD: the two UI surfaces; cream cards for flows, navy overlays
+  for in-game stats.
+- Clip-path chamfer: cutting a corner off a rectangle with CSS `clip-path: polygon(...)`
+  instead of rounding with `border-radius`.
+- Design tokens: named, reusable values (colors, fonts, radii) shared across components.
 - Low-poly: 3D shapes made of relatively few flat faces, for a clean, simple,
   toy-or-papercraft look rather than realism.
 - Flat shading: rendering that keeps each face a single, flat tone, preserving the hard

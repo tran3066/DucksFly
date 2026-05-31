@@ -2,10 +2,10 @@
 // leaderboard on the right, and a control hint at the bottom. Shown while you're still flying
 // (phase === 'racing' and you haven't crossed the line).
 
-import { useEffect, useState } from 'react'
+import { type CSSProperties, useEffect, useState } from 'react'
 import type { PlayerView, RaceSnapshot } from '../../net/types'
-import { COLORS, KeyCap, formatTime } from '../ui'
-import { HudRow, hudPanel, hudRowStyle } from './parts'
+import { COLORS, FONT_DISPLAY, KeyCap, cutPath, formatTime } from '../ui'
+import { hudPanel } from './parts'
 
 export function RaceHud({
   race,
@@ -25,6 +25,8 @@ export function RaceHud({
 
   const ranked = [...race.players].sort((a, b) => (a.rank || 99) - (b.rank || 99))
   const elapsed = race.raceStartAt > 0 ? Date.now() - race.raceStartAt : 0
+  const rank = self?.rank || 0
+  const total = race.players.length
 
   // Once the first player crosses the line the server opens a finish-grace window; flash a
   // countdown at the top so everyone still flying knows the race is about to end.
@@ -36,29 +38,111 @@ export function RaceHud({
     <>
       {finisher && race.finishWindowEndsAt > 0 && <FinishBanner name={finisher.name} secs={graceLeft} />}
 
-      <div style={{ ...hudPanel, top: 14, left: 14, minWidth: 170 }}>
-        <HudRow label="time" value={formatTime(elapsed)} />
-        <HudRow label="rings" value={`${self?.ringsPassed ?? 0} / ${ringCount}`} />
-        <HudRow label="rank" value={`${self?.rank || '–'} / ${race.players.length}`} />
+      {/* Big, glanceable telemetry across the top-left: time, rings, position. */}
+      <div style={{ position: 'absolute', top: 14, left: 14, display: 'flex', gap: 12 }}>
+        <BigStat label="TIME" value={formatTime(elapsed)} />
+        <BigStat
+          label="RINGS"
+          value={`${self?.ringsPassed ?? 0}`}
+          suffix={`/ ${ringCount}`}
+          accent={COLORS.gold}
+        />
+        <BigStat
+          label="POSITION"
+          value={rank ? `${rank}` : '–'}
+          suffix={`/ ${total}`}
+          accent={rank === 1 ? COLORS.gold : COLORS.accentBlue}
+        />
       </div>
 
-      <div style={{ ...hudPanel, top: 14, right: 14, minWidth: 190 }}>
-        <div style={{ color: COLORS.dim, marginBottom: 6, fontSize: '0.75rem', letterSpacing: 1 }}>
+      <div style={{ ...hudPanel, top: 14, right: 14, minWidth: 220, padding: '14px 16px' }}>
+        <div style={{ color: COLORS.hudDim, marginBottom: 10, fontSize: '0.8rem', letterSpacing: 1.5, fontWeight: 700 }}>
           LEADERBOARD
         </div>
-        {ranked.map((p) => (
-          <div key={p.id} style={hudRowStyle}>
-            <span style={{ color: p.id === race.sessionId ? COLORS.gold : COLORS.text }}>
-              {p.rank || '–'}. {p.name}
-            </span>
-            <span style={{ color: COLORS.dim }}>{p.finished ? '🏁' : `${p.ringsPassed}`}</span>
-          </div>
-        ))}
+        {ranked.map((p) => {
+          const me = p.id === race.sessionId
+          return (
+            <div
+              key={p.id}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: 14,
+                padding: '4px 6px',
+                marginBottom: 2,
+                borderRadius: 8,
+                background: me ? 'rgba(255,210,63,0.12)' : 'transparent',
+                fontSize: '1.05rem',
+                fontWeight: me ? 800 : 600,
+              }}
+            >
+              <span style={{ color: me ? COLORS.gold : COLORS.hudText }}>
+                <span style={{ opacity: 0.6, marginRight: 8 }}>{p.rank || '–'}</span>
+                {p.name}
+                {me ? ' (you)' : ''}
+              </span>
+              <span style={{ color: p.finished ? COLORS.gold : COLORS.hudText, fontVariantNumeric: 'tabular-nums' }}>
+                {p.finished ? '🏁' : `${p.ringsPassed}`}
+              </span>
+            </div>
+          )
+        })}
       </div>
 
       <ControlsLegend />
     </>
   )
+}
+
+/** A large, glanceable stat tile (big number + small caption). */
+function BigStat({
+  label,
+  value,
+  suffix,
+  accent = COLORS.hudText,
+}: {
+  label: string
+  value: string
+  suffix?: string
+  accent?: string
+}) {
+  return (
+    <div
+      style={{
+        ...hudPanel,
+        position: 'static',
+        padding: '8px 18px',
+        minWidth: 96,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 2,
+      }}
+    >
+      <span style={{ color: COLORS.hudDim, fontSize: '0.72rem', letterSpacing: 2, fontWeight: 700 }}>
+        {label}
+      </span>
+      <span style={bigValueStyle(accent)}>
+        {value}
+        {suffix && (
+          <span style={{ fontSize: '1.1rem', color: COLORS.hudDim, fontWeight: 600, marginLeft: 4 }}>
+            {suffix}
+          </span>
+        )}
+      </span>
+    </div>
+  )
+}
+
+function bigValueStyle(color: string): CSSProperties {
+  return {
+    fontSize: '2.4rem',
+    fontWeight: 800,
+    lineHeight: 1.05,
+    color,
+    fontVariantNumeric: 'tabular-nums',
+  }
 }
 
 /** Small flashing top-center banner: someone finished, the race ends in `secs`. */
@@ -67,19 +151,21 @@ function FinishBanner({ name, secs }: { name: string; secs: number }) {
     <div
       style={{
         position: 'absolute',
-        top: 14,
+        top: 120,
         left: '50%',
         transform: 'translateX(-50%)',
-        padding: '8px 16px',
-        borderRadius: 999,
-        background: 'rgba(10,18,30,0.72)',
-        border: `1px solid ${COLORS.gold}`,
-        color: COLORS.gold,
+        padding: '8px 18px',
+        background: COLORS.hud,
+        border: `1px solid ${COLORS.yellow}`,
+        color: COLORS.yellow,
+        fontFamily: FONT_DISPLAY,
         fontSize: '0.95rem',
         fontWeight: 700,
         whiteSpace: 'nowrap',
         pointerEvents: 'none',
-        backdropFilter: 'blur(6px)',
+        backdropFilter: 'blur(7px)',
+        WebkitBackdropFilter: 'blur(7px)',
+        clipPath: cutPath(8),
         animation: 'ducksfly-flash 1s ease-in-out infinite',
       }}
     >
@@ -90,20 +176,26 @@ function FinishBanner({ name, secs }: { name: string; secs: number }) {
 
 function ControlsLegend() {
   return (
-    <div style={{ ...hudPanel, bottom: 14, left: 14 }}>
-      <div style={{ marginBottom: 2 }}>
-        <KeyCap>Space</KeyCap>
-        <span style={{ color: COLORS.dim }}>flap (climb)</span>
-      </div>
-      <div style={{ marginBottom: 2 }}>
-        <KeyCap>W</KeyCap>
-        <span style={{ color: COLORS.dim }}>dive</span>
-      </div>
-      <div>
-        <KeyCap>A</KeyCap>
-        <KeyCap>D</KeyCap>
-        <span style={{ color: COLORS.dim }}>lean</span>
-      </div>
+    <div
+      style={{
+        ...hudPanel,
+        bottom: 22,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        padding: '11px 18px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 9,
+        color: COLORS.hudDim,
+        pointerEvents: 'none',
+      }}
+    >
+      <KeyCap dark>Space</KeyCap> flap
+      <span style={{ opacity: 0.4 }}>·</span>
+      <KeyCap dark>A</KeyCap>
+      <KeyCap dark>D</KeyCap> lean
+      <span style={{ opacity: 0.4 }}>·</span>
+      <KeyCap dark>W</KeyCap> dive
     </div>
   )
 }

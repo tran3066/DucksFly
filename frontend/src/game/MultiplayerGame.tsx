@@ -25,6 +25,7 @@ import { FlightScene } from './FlightScene'
 import type { FlightRigProps } from './FlightRig'
 import { CrashFlash } from './CrashFlash'
 import { startMusic, stopMusic, playFinish } from './sfx'
+import { Minimap } from './Minimap'
 import { RemoteDucks } from './RemoteDuck'
 import { ControlModeToggle, type ControlMode } from './ModeChooser'
 import { useCalibrationStore } from '../input/calibration'
@@ -246,6 +247,16 @@ export function MultiplayerGame({
       </FlightScene>
 
       <CrashFlash at={crashAt} />
+
+      {racing && (
+        <Minimap
+          stateRef={stateRef}
+          players={race.players}
+          sessionId={race.sessionId}
+          length={map.length}
+          halfWidth={map.halfWidth}
+        />
+      )}
 
       <RaceScreens
         race={race}
