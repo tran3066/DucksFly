@@ -61,8 +61,16 @@ export function NatureProp({ file, ...props }: NaturePropProps) {
 
 // Named presets. The default scale brings each model to a sensible world size;
 // callers can still override scale (a later prop in the spread wins).
-export function Tree(props: ThreeElements['group']) {
-  return <NatureProp file="Tree_01.fbx" scale={0.01} {...props} />
+
+/** The available tree shapes in the pack (Tree_01.fbx … Tree_05.fbx). */
+export type TreeVariant = 1 | 2 | 3 | 4 | 5
+export const TREE_VARIANTS: TreeVariant[] = [1, 2, 3, 4, 5]
+
+export function Tree({
+  variant = 1,
+  ...props
+}: ThreeElements['group'] & { variant?: TreeVariant }) {
+  return <NatureProp file={`Tree_0${variant}.fbx`} scale={0.01} {...props} />
 }
 
 export function Bush(props: ThreeElements['group']) {
