@@ -12,6 +12,7 @@ import {
   setBaseline,
   getBaseline,
   useCalibrationStore,
+  assessFraming,
 } from './calibration'
 import { makeRestFrame, makeLowVisFrame, scalePose } from './fixtures/landmarks'
 
@@ -184,5 +185,49 @@ describe('03.3 recalibrate and persist', () => {
     // game must calibrate before play (this is also what makes a fresh page load
     // re-prompt: the in-memory store starts null).
     expect(needsRecalibration(null, 0.2)).toBe(true)
+  })
+})
+
+describe('assessFraming (distance / framing guidance)', () => {
+  it('a well-framed T-pose passes', () => {
+    // makeRestFrame is a centered T-pose with every tracked joint visible and
+    // inside the frame, so it should read as good framing.
+    const res = assessFraming(makeRestFrame())
+    expect(res.ok).toBe(true)
+    expect(res.reason).toBe('ok')
+  })
+
+  it('a wrist pushed to the edge fails as out-of-frame (too close)', () => {
+    // Standing too close in a T-pose pushes a wrist to the frame edge. x=0.03 is
+    // inside the default 0.08 margin, so the player is told they are too close.
+    const f = makeRestFrame()
+    f[15].x = 0.03
+    const res = assessFraming(f)
+    expect(res.ok).toBe(false)
+    expect(res.reason).toBe('out-of-frame')
+  })
+
+  it('the margin edge is inclusive (a joint exactly at the margin still fits)', () => {
+    // A wrist exactly on the margin line counts as inside; just past it does not.
+    const onEdge = makeRestFrame()
+    onEdge[15].x = 0.08
+    expect(assessFraming(onEdge).ok).toBe(true)
+    const past = makeRestFrame()
+    past[15].x = 0.079
+    expect(assessFraming(past).reason).toBe('out-of-frame')
+  })
+
+  it('a null frame is reported as no-pose', () => {
+    expect(assessFraming(null).reason).toBe('no-pose')
+  })
+
+  it('ADVERSARIAL: low visibility wins over out-of-frame', () => {
+    // A joint that is both off-frame AND barely visible reports low-visibility,
+    // because an unseen joint's position cannot be trusted to judge framing.
+    const f = makeLowVisFrame() // all tracked joints at visibility ~0.1
+    f[15].x = 0.01 // also off-frame
+    const res = assessFraming(f)
+    expect(res.ok).toBe(false)
+    expect(res.reason).toBe('low-visibility')
   })
 })

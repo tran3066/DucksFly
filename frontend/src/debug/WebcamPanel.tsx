@@ -33,6 +33,8 @@ import {
   getBaseline,
   needsRecalibration,
   isFrameUsable,
+  assessFraming,
+  type FramingReason,
 } from '../input/calibration'
 import { useInputStore } from '../input/store'
 import type { LandmarkFrame } from '../input/fixtures/landmarks'
@@ -478,9 +480,11 @@ export function WebcamPanel({
           </h2>
           {phase === 'idle' && (
             <p style={gateTextStyle}>
-              Stand back so your head, shoulders and both hands are in view. Strike
-              a T-pose (arms straight out to your sides at shoulder height), then
-              press Calibrate and hold still.
+              Strike a T-pose (arms straight out at shoulder height) and step back
+              until your hands fit inside the dashed box and the feed reads "Good
+              distance" - standing too close makes the arm tracking jump around.
+              Then press Calibrate and hold still. (For the quack, let the camera
+              see your face for a moment so it starts tracking.)
             </p>
           )}
           {phase === 'countdown' && (
@@ -549,9 +553,25 @@ export function WebcamPanel({
           {statusLabel}
         </div>
 
+        {/* "Fit your arms inside" guide. The dashed box is inset by the same 8%
+            margin assessFraming uses, so when your outstretched-arm landmarks sit
+            inside it you are at a good (steady) distance. Shown only during the
+            gate; pointer-events off so it never blocks the buttons. */}
+        {!calibrated && isReady && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: '8%',
+              border: '2px dashed rgba(124, 196, 255, 0.5)',
+              borderRadius: 10,
+              pointerEvents: 'none',
+            }}
+          />
+        )}
+
         {/* Live calibration readout (during calibration, once the camera is live):
-            the "full debug" numbers that prove tracking works and show the baseline
-            being measured in real time while the player holds still. */}
+            the distance/framing guidance headline plus the "full debug" numbers
+            that prove tracking works and show the baseline being measured live. */}
         {!calibrated && isReady && <CalibrationReadout capturing={phase === 'capturing'} />}
 
         {/* Centered hint when we are not actually tracking yet (camera off /
@@ -812,12 +832,21 @@ const readoutPanelStyle: React.CSSProperties = {
 // TRACKED set the calibration capture gate uses: shoulders, elbows, wrists, hips).
 const TRACKED_FOR_READOUT = [11, 12, 13, 14, 15, 16, 23, 24]
 
+// Above this, the wrists are bouncing around enough (while the player is trying to
+// hold still) that tracking is unreliable and they should step back a bit more.
+// Measured as the spread (max - min) of the recent wrist-midpoint, in normalized
+// image units.
+const JITTER_LIMIT = 0.045
+
 interface ReadoutStats {
   tracked: boolean // every tracked joint is visible enough to compute a baseline
   visible: number // how many of the 8 tracked joints are currently visible
   shoulderWidth: number
   wristY: number
   tiltDeg: number
+  framing: FramingReason // distance / framing verdict
+  jitter: number // recent wrist-midpoint spread (normalized units)
+  faceOk: boolean // a face is currently tracked (for the quack gesture)
 }
 
 const EMPTY_READOUT: ReadoutStats = {
@@ -826,6 +855,9 @@ const EMPTY_READOUT: ReadoutStats = {
   shoulderWidth: 0,
   wristY: 0,
   tiltDeg: 0,
+  framing: 'no-pose',
+  jitter: 0,
+  faceOk: false,
 }
 
 /**
@@ -838,23 +870,47 @@ const EMPTY_READOUT: ReadoutStats = {
  */
 function CalibrationReadout({ capturing }: { capturing: boolean }): React.JSX.Element {
   const [stats, setStats] = useState<ReadoutStats>(EMPTY_READOUT)
+  // Recent wrist-midpoint positions, to gauge jitter while the player holds still.
+  const wristHistory = useRef<Array<{ x: number; y: number }>>([])
 
   useEffect(() => {
     const id = setInterval(() => {
-      const frame = useInputStore.getState().landmarks
+      const store = useInputStore.getState()
+      const frame = store.landmarks
+      const faceOk = store.faceLandmarks !== null
       if (!frame) {
-        setStats(EMPTY_READOUT)
+        wristHistory.current = []
+        setStats({ ...EMPTY_READOUT, faceOk })
         return
       }
+
       let visible = 0
       for (const i of TRACKED_FOR_READOUT) {
         const lm = frame[i]
         if (lm && lm.visibility >= 0.5) visible += 1
       }
-      // Only compute a baseline once every tracked joint is visible; otherwise
-      // show the count so the player knows to step back / reframe.
+      const framing = assessFraming(frame).reason
+
+      // Jitter: track the wrist midpoint over the last ~1s and measure its spread.
+      // While the player holds the pose, a large spread means the landmarks are
+      // bouncing (usually because they are standing too close), so we flag it.
+      const mid = { x: (frame[15].x + frame[16].x) / 2, y: (frame[15].y + frame[16].y) / 2 }
+      const hist = wristHistory.current
+      hist.push(mid)
+      if (hist.length > 10) hist.shift()
+      let jitter = 0
+      if (hist.length >= 4) {
+        const xs = hist.map((p) => p.x)
+        const ys = hist.map((p) => p.y)
+        const spread = Math.max(
+          Math.max(...xs) - Math.min(...xs),
+          Math.max(...ys) - Math.min(...ys),
+        )
+        jitter = spread
+      }
+
       if (!isFrameUsable(frame)) {
-        setStats({ ...EMPTY_READOUT, visible })
+        setStats({ ...EMPTY_READOUT, visible, framing, jitter, faceOk })
         return
       }
       const b = computeBaseline(frame)
@@ -864,8 +920,11 @@ function CalibrationReadout({ capturing }: { capturing: boolean }): React.JSX.El
         shoulderWidth: b.shoulderWidth,
         wristY: b.restWristY,
         tiltDeg: (b.restShoulderAngle * 180) / Math.PI,
+        framing,
+        jitter,
+        faceOk,
       })
-    }, 120)
+    }, 100)
     return () => clearInterval(id)
   }, [])
 
@@ -876,21 +935,34 @@ function CalibrationReadout({ capturing }: { capturing: boolean }): React.JSX.El
     </div>
   )
 
+  // Turn the framing verdict (+ jitter) into one clear distance instruction. This
+  // is the headline the player reads to find the right spot to stand.
+  const shaky = stats.framing === 'ok' && stats.jitter > JITTER_LIMIT
+  const good = stats.framing === 'ok' && !shaky
+  const distanceMsg = capturing
+    ? 'capturing...'
+    : stats.framing === 'no-pose'
+      ? 'Step into the camera view'
+      : stats.framing === 'low-visibility'
+        ? 'Make sure your shoulders + both hands are lit'
+        : stats.framing === 'out-of-frame'
+          ? 'Step back - your arms are out of frame'
+          : shaky
+            ? 'Step back a bit more - tracking is shaky'
+            : 'Good distance'
+
   return (
     <div style={readoutPanelStyle}>
-      <div
-        style={{
-          fontWeight: 700,
-          marginBottom: 4,
-          color: stats.tracked ? '#39FF14' : '#ffc44a',
-        }}
-      >
-        {capturing ? 'capturing...' : stats.tracked ? 'tracking OK' : 'move into frame'}
+      <div style={{ fontWeight: 700, marginBottom: 4, color: good ? '#39FF14' : '#ffc44a' }}>
+        {good ? '✓ ' : ''}
+        {distanceMsg}
       </div>
       {row('joints', `${stats.visible}/8`)}
+      {row('jitter', stats.jitter > 0 ? stats.jitter.toFixed(3) : '-')}
       {row('shoulder w', stats.tracked ? stats.shoulderWidth.toFixed(3) : '-')}
       {row('wrist y', stats.tracked ? stats.wristY.toFixed(3) : '-')}
       {row('tilt', stats.tracked ? `${stats.tiltDeg.toFixed(1)} deg` : '-')}
+      {row('face', stats.faceOk ? 'tracked' : 'not yet')}
     </div>
   )
 }

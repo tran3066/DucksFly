@@ -102,6 +102,12 @@ export function createFlightState(): DuckState {
 const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v)
 const DEG = Math.PI / 180
 
+// Flap value at which lift fully cancels gravity: at or above this the bird holds
+// altitude or climbs and NEVER sinks while flapping; below it (barely moving or
+// gliding) gravity wins and it descends. Lined up with the "wings are visibly
+// flapping" animation threshold, so "wings flapping" reads as "not sinking".
+const FLAP_HOLD_FLAP = 0.15
+
 // Frame-rate-independent exponential approach (Unity's ExpLerp).
 function expLerp(a: number, b: number, rate: number, dt: number): number {
   return a + (b - a) * (1 - Math.exp(-rate * dt))
@@ -134,8 +140,12 @@ export function flightStep(
   // store lateral in _lean slot's sibling; we track it on the fly via position
   const vLateral = expLerp(state._lean, vLatTarget, cfg.lateralResponse, dt)
 
-  // Vertical: sustained lift vs gravity vs drag, plus dive sink.
-  const liftSustained = cfg.liftMultiplier * flap
+  // Vertical: sustained lift vs gravity vs drag, plus dive sink. While actively
+  // flapping (flap >= FLAP_HOLD_FLAP) the lift at least cancels gravity, so the
+  // bird never sinks while its wings are beating; flap scales the climb ON TOP of
+  // that hold. Below the threshold the gravity term fades out and it glides down.
+  const liftSustained =
+    cfg.gravity * clamp(flap / FLAP_HOLD_FLAP, 0, 1) + cfg.liftMultiplier * flap
   let vY = state.verticalVel
   vY += (liftSustained - cfg.gravity - cfg.verticalDrag * vY) * dt
   if (actions.flapImpulse) vY += cfg.impulseGain

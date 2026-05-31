@@ -67,6 +67,25 @@ const VIS_MIN = 0.5
 const SHOULDER_WIDTH_EPSILON = 1e-6
 
 /**
+ * Distance between the two shoulder landmarks (11 left, 12 right), the scale
+ * unit every spatial measurement divides by so body size and camera distance
+ * cancel out. Clamped to SHOULDER_WIDTH_EPSILON so a degenerate frame (shoulders
+ * on top of each other) can never make a later division blow up to Infinity.
+ *
+ * This is the single source of truth for shoulder width: computeBaseline below
+ * uses it for the stored baseline, and the flap tracker (Step 04) calls it
+ * per-frame to self-normalize each live frame without reading the baseline.
+ * Accepts the richer LandmarkFrame too (it only reads x and y), so callers can
+ * pass either a calibration Frame or a live pose frame.
+ */
+export function shoulderWidth(frame: Frame): number {
+  const l11 = frame[11]
+  const r12 = frame[12]
+  const raw = Math.hypot(l11.x - r12.x, l11.y - r12.y)
+  return raw < SHOULDER_WIDTH_EPSILON ? SHOULDER_WIDTH_EPSILON : raw
+}
+
+/**
  * True only when every tracked landmark in the frame is visible enough. A frame
  * with a hidden nose still passes (the nose is not tracked), while a frame with
  * a hidden shoulder or wrist fails. visMin defaults to VIS_MIN but can be raised
@@ -80,6 +99,47 @@ export function isFrameUsable(frame: Frame, visMin: number = VIS_MIN): boolean {
     if (!lm || lm.visibility < visMin) return false
   }
   return true
+}
+
+// How close to a frame edge a tracked joint may sit before we treat the player as
+// standing too close. MediaPipe pose estimates get jumpy at/near the edges, so a
+// margin both keeps outstretched arms in shot and nudges the player back to the
+// steadier distance.
+const FRAMING_MARGIN = 0.08
+
+export type FramingReason = 'ok' | 'no-pose' | 'low-visibility' | 'out-of-frame'
+
+export interface FramingResult {
+  ok: boolean
+  reason: FramingReason
+}
+
+/**
+ * Judge whether the player is framed well enough for reliable tracking: every
+ * tracked joint must be visible AND sit inside a safe inner box (a margin in from
+ * every edge). 'low-visibility' is reported before 'out-of-frame' because an
+ * unseen joint's position cannot be trusted. This drives the calibration gate's
+ * "step back / move into view" guidance: standing too close in a T-pose pushes
+ * the wrists to the frame edges, which is exactly where the landmarks start to
+ * jump around.
+ */
+export function assessFraming(
+  frame: Frame | null,
+  margin: number = FRAMING_MARGIN,
+  visMin: number = VIS_MIN,
+): FramingResult {
+  if (!frame) return { ok: false, reason: 'no-pose' }
+  for (const i of TRACKED) {
+    const lm = frame[i]
+    if (!lm || lm.visibility < visMin) return { ok: false, reason: 'low-visibility' }
+  }
+  for (const i of TRACKED) {
+    const lm = frame[i]
+    if (lm.x < margin || lm.x > 1 - margin || lm.y < margin || lm.y > 1 - margin) {
+      return { ok: false, reason: 'out-of-frame' }
+    }
+  }
+  return { ok: true, reason: 'ok' }
 }
 
 /**
@@ -198,14 +258,17 @@ export function computeBaseline(pose: Frame): Baseline {
   const l15 = pose[15]
   const r16 = pose[16]
 
-  const rawShoulderWidth = Math.hypot(l11.x - r12.x, l11.y - r12.y)
-  const shoulderWidth = rawShoulderWidth < SHOULDER_WIDTH_EPSILON ? SHOULDER_WIDTH_EPSILON : rawShoulderWidth
+  // Reuse the shared shoulderWidth() so there is exactly one width formula and
+  // one divide-by-zero guard. This is the SAME value the old inline math
+  // produced (hypot of the shoulder delta, clamped to the epsilon floor), so
+  // the calibration tests are unaffected.
+  const width = shoulderWidth(pose)
 
   const restShoulderAngle = Math.atan2(r12.y - l11.y, r12.x - l11.x)
 
   const restWristY = (l15.y + r16.y) / 2
 
-  return { shoulderWidth, restShoulderAngle, restWristY }
+  return { shoulderWidth: width, restShoulderAngle, restWristY }
 }
 
 // ---------------------------------------------------------------------------

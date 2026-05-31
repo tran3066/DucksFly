@@ -115,6 +115,124 @@ export function makeLowVisFrame(): LandmarkFrame {
   return frame
 }
 
+// ---------------------------------------------------------------------------
+// Flap fixtures (plan Step 04.1 - 04.4). makeFlapSequence builds a run of frames
+// where the wrists rise then fall, so the flap detectors see a realistic stroke
+// without hand-building every landmark. The whole flap pipeline measures
+// NORMALIZED wrist height h = (shoulderY - wristY) / shoulderWidth, so this
+// fixture is written to control h directly: it picks a target h per frame, then
+// derives the wrist Y that produces that h for the chosen shoulder width. That
+// makes the tests' numbers (peak velocity, thresholds) easy to reason about and
+// keeps a sequence scale-invariant by construction.
+// ---------------------------------------------------------------------------
+
+// The flap pipeline reads these defaults from the standing DEFAULT_POSE above.
+// shoulders sit level at y=0.35; the shoulder MIDLINE Y is therefore 0.35. We
+// reuse that as the reference height the wrist offset is measured from.
+const FLAP_SHOULDER_Y = 0.35
+// Default horizontal shoulder separation in DEFAULT_POSE (0.58 - 0.42 = 0.16).
+const FLAP_DEFAULT_SHOULDER_WIDTH = 0.16
+
+export interface FlapSequenceOptions {
+  // Peak normalized wrist height in body units (h units): how high above the
+  // shoulder line the wrists reach at the top of the stroke. 1.0 means "one
+  // shoulder width above the shoulders". The 04.2 high threshold is 0.6, so an
+  // amplitude above 0.6 crosses it and below 0.6 never arms the detector.
+  amplitude?: number
+  // Total frames in the stroke. Fewer frames = a sharper, faster stroke = a
+  // larger per-frame velocity, which is how 04.3 reads "faster flapping". The
+  // stroke is triangular and symmetric, so the peak adjacent step velocity is
+  // 2 * amplitude / framesPerStroke.
+  framesPerStroke?: number
+  // Shoulder width in normalized image units. The fixture moves the shoulder
+  // landmarks apart to hit this width AND derives the wrist Y from it, so two
+  // sequences at different widths describe the SAME physical flap in body units
+  // (this is what makes the 04.1 scale-invariance test pass).
+  shoulderWidth?: number
+  // Adversarial 04.2 input: after crossing the high threshold on the way up,
+  // briefly dip back down and re-rise above high WITHIN the refractory window,
+  // to prove one physical flap still yields exactly one impulse.
+  wobble?: boolean
+  // 04.1 / 04.2 input: rise to the peak and STAY there (no down swing). Used for
+  // a monotone-rise buffer feed and for the half-motion "never completes" case.
+  partial?: boolean
+}
+
+/**
+ * Build a list of landmark frames describing one wrist flap: the wrists rise
+ * from the shoulder line up to `amplitude` body units and (unless `partial`)
+ * fall back to the shoulder line. Each frame is a full 33-landmark frame built
+ * on makeLandmarkFrame, with the shoulders spread to `shoulderWidth` and the
+ * wrists placed at the Y that yields the intended normalized height.
+ *
+ * Height trajectory (in body units h):
+ *   - rise linearly from 0 to amplitude over the first half of the stroke,
+ *   - fall linearly back to 0 over the second half (skipped when `partial`).
+ * Triangular on purpose: the steepest adjacent step is a constant
+ * 2 * amplitude / framesPerStroke, so peak velocity is predictable and a faster
+ * (smaller framesPerStroke) stroke reads strictly higher.
+ */
+export function makeFlapSequence(opts: FlapSequenceOptions = {}): LandmarkFrame[] {
+  const amplitude = opts.amplitude ?? 1.0
+  const framesPerStroke = Math.max(2, opts.framesPerStroke ?? 8)
+  const shoulderWidth = opts.shoulderWidth ?? FLAP_DEFAULT_SHOULDER_WIDTH
+  const wobble = opts.wobble ?? false
+  const partial = opts.partial ?? false
+
+  // Half the stroke is the up swing; the rest is the down swing. With an even
+  // count the peak lands just before the midpoint, which keeps the rising-edge
+  // impulse test (04.2) firing in the first half.
+  const upFrames = Math.max(1, Math.floor(framesPerStroke / 2))
+
+  // Heights in body units, one per frame.
+  const heights: number[] = []
+  for (let i = 0; i < framesPerStroke; i++) {
+    let h: number
+    if (i <= upFrames) {
+      // Up swing: 0 -> amplitude linearly.
+      h = amplitude * (i / upFrames)
+    } else if (partial) {
+      // Partial stroke: hold at the peak instead of coming back down.
+      h = amplitude
+    } else {
+      // Down swing: amplitude -> 0 linearly over the remaining frames.
+      const downFrames = framesPerStroke - 1 - upFrames
+      const step = i - upFrames
+      h = downFrames > 0 ? amplitude * (1 - step / downFrames) : 0
+    }
+    heights.push(h)
+  }
+
+  // Adversarial wobble: take a frame that is already above the high threshold on
+  // the up swing, dip it briefly below high, then put it back above high, all
+  // within a few frames so it stays inside the refractory window. We splice this
+  // in right after the peak so the detector is still armed in HIGH state.
+  if (wobble && !partial) {
+    const peakIdx = upFrames
+    // Insert a small dip-and-rise after the peak: dip to just under the peak but
+    // still above the low threshold, then back above high. These never return
+    // below the low threshold, so a correct detector must NOT re-fire.
+    const dipHigh = Math.max(0, amplitude * 0.55) // briefly lower, still > low (0.2) for amp=1
+    const reHigh = amplitude // back up above high
+    heights.splice(peakIdx + 1, 0, dipHigh, reHigh)
+  }
+
+  // Turn each target height into a full frame.
+  return heights.map((h) => {
+    // h = (shoulderY - wristY) / shoulderWidth  ->  wristY = shoulderY - h * width.
+    const wristY = FLAP_SHOULDER_Y - h * shoulderWidth
+    // Spread the shoulders symmetrically about x=0.5 to hit the requested width
+    // so the tracker's per-frame shoulderWidth(frame) equals shoulderWidth.
+    const half = shoulderWidth / 2
+    return makeLandmarkFrame({
+      11: { x: 0.5 + half, y: FLAP_SHOULDER_Y }, // left shoulder (image right)
+      12: { x: 0.5 - half, y: FLAP_SHOULDER_Y }, // right shoulder
+      15: { y: wristY }, // left wrist
+      16: { y: wristY }, // right wrist
+    })
+  })
+}
+
 /**
  * Scale every landmark toward the centroid of the tracked landmarks by factor
  * k. k<1 shrinks the pose (simulating the player standing farther from the
