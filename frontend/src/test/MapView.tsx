@@ -5,6 +5,7 @@ import { DoubleSide, Mesh, MeshStandardMaterial } from 'three';
 import type { MapDef, RingDef } from '../map';
 import { Scenery } from '../world/Scenery';
 import { GroundPlane } from '../world/GroundPlane';
+import { Mountains } from '../world/Mountains';
 
 /**
  * Placeholder environment renderer for the generation test run. Deliberately
@@ -26,25 +27,21 @@ export function MapView({
 }) {
   const midZ = map.length / 2;
 
-  // Extend the ground out past the furthest scenery so the flanking forest has
-  // something to stand on (scenery is placed in bands beyond the corridor walls).
-  const groundHalfX =
-    map.scenery.reduce((m, s) => Math.max(m, Math.abs(s.pos[0])), map.halfWidth) + 20;
+  // Extend the ground out past the furthest scenery AND the flanking mountain
+  // range so both have something to stand on (no void between corridor + peaks).
+  const sceneryReach = map.scenery.reduce((m, s) => Math.max(m, Math.abs(s.pos[0])), map.halfWidth);
+  const groundHalfX = Math.max(sceneryReach, map.halfWidth + 520) + 20;
 
   return (
     <group>
       {/* Ground plane (tiling grass texture), widened to cover the scenery bands. */}
       <GroundPlane width={groundHalfX * 2} length={map.length} y={map.floorY} midZ={midZ} />
 
-      {/* Lateral bounce walls at x = +/- halfWidth. Translucent (with depthWrite
-          off to avoid alpha-sort flicker) so the flanking forest reads through
-          them — a soft boundary tint rather than a brick wall (see plan doc). */}
-      {[-1, 1].map((side) => (
-        <mesh key={side} position={[side * (map.halfWidth + 0.5), map.ceiling / 2, midZ]}>
-          <boxGeometry args={[1, map.ceiling, map.length]} />
-          <meshStandardMaterial color="#8fb8cc" transparent opacity={0.16} depthWrite={false} />
-        </mesh>
-      ))}
+      {/* Mountain range lining both sides as a natural barrier (replaces the old
+          translucent walls). The duck is still clamped to ±halfWidth by physics. */}
+      <Suspense fallback={null}>
+        <Mountains map={map} />
+      </Suspense>
 
       {/* Start + finish + intermediate checkpoint lines, raised well clear of the
           floor (no near-coplanar z-fight) and rendered as solid stripes. */}
