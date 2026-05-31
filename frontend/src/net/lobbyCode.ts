@@ -1,6 +1,8 @@
 // Lobby invite codes (client side). The host generates a short code and creates a room
 // with it; joiners pass the same code so Colyseus matchmaking (filterBy "code") routes
-// them to that exact room. Codes are also shareable as a `?room=CODE` link.
+// them to that exact room. Codes are also shareable as a `?room=CODE&server=...` link.
+
+import { getServerUrl } from './serverConfig'
 
 /** Unambiguous alphabet — no 0/O/1/I/L — matches the server's fallback generator. */
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
@@ -41,10 +43,13 @@ export function getInitialRoomCode(): string {
   return raw ? normalizeCode(raw) : ''
 }
 
-/** Build a shareable link to a lobby that preserves the current `?server=` choice. */
+/** Build a shareable link that routes joiners to this lobby on the same backend. */
 export function buildShareLink(code: string): string {
   if (typeof window === 'undefined') return code
   const url = new URL(window.location.href)
   url.searchParams.set('room', code)
+  // Always embed the backend URL — lobbies live in-memory on one server process, so a
+  // link with only `?room=` fails when the joiner's default server differs from the host's.
+  url.searchParams.set('server', getServerUrl())
   return url.toString()
 }
