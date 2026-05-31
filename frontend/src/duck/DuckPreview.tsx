@@ -4,6 +4,8 @@ import { Grid, OrbitControls } from '@react-three/drei'
 import { Duck } from './Duck'
 import {
   Bush,
+  Flowers,
+  FLOWER_VARIANTS,
   Grass,
   GRASS_VARIANTS,
   Ground,
@@ -67,6 +69,10 @@ export function DuckPreview() {
           {/* Both grass tufts near the duck. */}
           {GRASS_VARIANTS.map((v, i) => (
             <Grass key={v} variant={v} position={[i * 1.5 - 0.75, 0, 1.5]} />
+          ))}
+          {/* Both flower clusters near the duck. */}
+          {FLOWER_VARIANTS.map((v, i) => (
+            <Flowers key={v} variant={v} position={[i * 1.5 - 0.75, 0, 2.5]} />
           ))}
           <Bush position={[-3, 0, 0]} />
         </Suspense>

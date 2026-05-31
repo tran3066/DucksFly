@@ -131,3 +131,15 @@ export function Grass({
 }: ThreeElements['group'] & { variant?: GrassVariant }) {
   return <NatureProp file={`Grass_0${variant}.fbx`} fitHeight={0.4} {...props} />
 }
+
+/** The available flower clusters in the pack (Flowers_01.fbx … Flowers_02.fbx). */
+export type FlowerVariant = 1 | 2
+export const FLOWER_VARIANTS: FlowerVariant[] = [1, 2]
+
+// Small foliage like grass — normalize to ~0.4 units tall.
+export function Flowers({
+  variant = 1,
+  ...props
+}: ThreeElements['group'] & { variant?: FlowerVariant }) {
+  return <NatureProp file={`Flowers_0${variant}.fbx`} fitHeight={0.4} {...props} />
+}
