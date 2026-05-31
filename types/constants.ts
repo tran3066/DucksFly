@@ -29,21 +29,8 @@ export const COUNTDOWN_MS = 5000;
  */
 export const FINISH_GRACE_MS = 20_000;
 
-/**
- * How long a player stays spun out after a player-vs-player collision before the server
- * clears the flag (lets them collide — and be counted — again). Slightly longer than the
- * client spin animation so it finishes before the next possible bump.
- */
-export const SPINOUT_RECOVERY_MS = 1500;
-
 /** Length of a lobby invite code (server-generated, unambiguous characters). */
 export const LOBBY_CODE_LENGTH = 4;
-
-/**
- * Distance under which two ducks count as colliding, in world units. Server-authoritative
- * (docs/ARCHITECTURE.md §3). Tune in playtesting.
- */
-export const COLLISION_RADIUS = 1.5;
 
 /**
  * How far behind real time remote ducks are rendered, in ms, so their sparse network

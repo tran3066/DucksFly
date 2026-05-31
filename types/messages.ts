@@ -1,8 +1,9 @@
 /**
  * The message contract between client and server, derived from the sequence diagram in
  * docs/ARCHITECTURE.md §5. Most state reaches clients via automatic Colyseus state sync
- * (phase, mapSeed, ringLayout, every player's pos/vel/quat). These named messages cover
- * the explicit events on top of that sync.
+ * (phase, mapSeed, every player's pos/vel/quat + progress). These named messages cover the
+ * explicit events on top of that sync. The course is built client-side from `mapSeed`, so no
+ * ring geometry is ever sent.
  */
 import type { Vec3, Quat, DuckVariant } from "./network";
 
@@ -43,11 +44,23 @@ export const ServerMessage = {
 } as const;
 export type ServerMessage = (typeof ServerMessage)[keyof typeof ServerMessage];
 
-/** Payload of a ClientMessage.UpdateState message. */
+/**
+ * Payload of a ClientMessage.UpdateState message — the client's authoritative pose, plus
+ * the small progress numbers folded into the same ~20Hz stream so we don't need separate
+ * chatty messages. `ringsPassed`/`collisions` are display-only; `finished` is latched by the
+ * server (the first true stamps finishTime; later updates can't un-finish). All three are
+ * optional so legacy callers that only send pose still type-check.
+ */
 export interface UpdateStatePayload {
   pos: Vec3;
   vel: Vec3;
   quat: Quat;
+  /** Rings the client has flown through so far (display only). */
+  ringsPassed?: number;
+  /** Tree/ring crashes the client has had so far (display only). */
+  collisions?: number;
+  /** True once the client has crossed the finish line (client-authoritative). */
+  finished?: boolean;
 }
 
 /** Payload of a ClientMessage.RingPassed message. */

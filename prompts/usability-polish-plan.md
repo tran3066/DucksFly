@@ -2,6 +2,52 @@
 
 Whiteboard. Status: brainstorming.
 
+## ROOT CAUSE (the real one) — finish never fires
+Two incompatible course generators:
+- backend `generateRingLayout(seed,8)` = 8 rings on a CIRCULAR track (cos/sin, r=40).
+- frontend `buildMap(seed)` = ~19 rings in a STRAIGHT corridor (z=100..1900, gap 100).
+Client renders/flies the corridor and ignores the server's broadcast `ringLayout`.
+
+Breakage chain:
+1. `race.ringCount=8` but corridor has ~19 rings → `reportRing` drops ids ≥ 8.
+2. Server marks finished only after passing rings 0..7 in STRICT order (`applyRingPass`
+   rejects out-of-order). Miss/clip one of the first 8 → server stalls on that id forever →
+   never finished → grace never starts (firstFinishAt stays 0) → race never ends.
+3. Visual finish line (z=2000) is NOT wired to the server in MP (`enableFinish:false`) →
+   crossing it does nothing → fly into the void.
+SP finish = z>=length (distance); MP finish = ring sequence. Inconsistent definitions.
+
+## BETTER DESIGN (proposed; not yet built)
+1. ONE shared course generator. Promote buildMap ring layout to a shared module both
+   sides import; delete circular `generateRingLayout`. ids/positions/count agree.
+   Client should use the SAME layout it renders for reporting (or use state.ringLayout).
+2. Finish = crossing the finish line. Client detects z>=finishZ → `Finish` msg → server
+   stamps finishTime + finished + starts existing grace. Matches visual line + SP. Robust.
+3. Rings = scoring/boost gates only, order-tolerant; never block finishing.
+
+## STATE CLEANUP (messy bits)
+- Refs mutated during render (runningRef/playersRef/mapRef/sessionIdRef) → move to effects.
+- Ring state stored twice (passedRingsRef+passedRingIds, ringPulseAtRef+ringPulseAt) via
+  syncRings mirror → collapse to one source.
+- finishedRef threaded but unused in MP (enableFinish:false).
+
+## EARLIER PATCH (correct but never triggers until root cause fixed)
+Root cause: MP had no per-player finish treatment. `enableFinish:false` + `finishedRef` never set → a
+finisher kept flying into the void; you only ever saw the leaderboard once the WHOLE race ended.
+Reproduced on both deployed and local, so it was a real frontend gap (not a stale deploy).
+
+Done:
+1. **Freeze on finish (MultiplayerGame.tsx).** `runningRef = phase==='racing' && !self.finished`. The
+   instant the server marks you finished, your duck stops dead — no void.
+2. **`FinishedWaiting` overlay.** Shows the moment you cross: your time/rank/crashes, live leaderboard,
+   and a countdown of how long the rest of the field has left. RaceHud + ControlsLegend hide for you.
+3. **Surfaced the grace deadline.** Added `finishWindowEndsAt` to schema → snapshot → types so the
+   "others have Xs left" countdown is real (server's existing FINISH_GRACE_MS = 20s).
+4. `finished` phase still shows the full `Results` table (winner + rematch) as before.
+
+Flow now: cross line → `FinishedWaiting` (frozen, leaderboard, 20s grace) → all finish OR grace expires
+→ `Results`.
+
 ## Goals (from request)
 1. Enter name once (persist), reuse on every lobby join.
 2. Support multiple concurrent lobbies / let friends group up.

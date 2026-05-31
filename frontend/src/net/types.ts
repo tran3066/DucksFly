@@ -57,6 +57,8 @@ export interface RaceSnapshot {
   countdownEndsAt: number;
   /** Epoch ms racing began (0 outside racing/finished); base for elapsed times. */
   raceStartAt: number;
+  /** Epoch ms the race auto-ends after the first finisher (0 until someone finishes). */
+  finishWindowEndsAt: number;
   hostId: string;
   players: PlayerView[];
 }

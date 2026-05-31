@@ -29,6 +29,7 @@ const INITIAL_SNAPSHOT: RaceSnapshot = {
   ringCount: 0,
   countdownEndsAt: 0,
   raceStartAt: 0,
+  finishWindowEndsAt: 0,
   hostId: "",
   players: [],
 };
@@ -44,12 +45,15 @@ function toPlayerView(p: any): PlayerView {
     pos: { x: p.pos.x, y: p.pos.y, z: p.pos.z },
     vel: { x: p.vel.x, y: p.vel.y, z: p.vel.z },
     quat: { x: p.quat.x, y: p.quat.y, z: p.quat.z, w: p.quat.w },
-    ringsPassed: p.ringsPassed,
-    lap: p.lap,
-    rank: p.rank,
-    spunOut: p.spunOut,
-    finished: p.finished,
-    ready: p.ready,
+    ringsPassed: p.ringsPassed ?? 0,
+    // `lap`/`spunOut` are gone from the server schema (single-pass course, no bird-vs-bird
+    // collisions). Defaulted here only so the legacy `?view=race|multiplayer` harnesses,
+    // which still read them, keep type-checking.
+    lap: p.lap ?? 0,
+    rank: p.rank ?? 0,
+    spunOut: p.spunOut ?? false,
+    finished: p.finished ?? false,
+    ready: p.ready ?? false,
     collisions: p.collisions ?? 0,
     finishTime: p.finishTime ?? 0,
   };
@@ -149,9 +153,13 @@ class RaceConnection {
       phase: state.phase,
       code: state.code ?? "",
       mapSeed: state.mapSeed,
-      ringCount: state.ringLayout.length,
+      // The server no longer holds ring geometry; clients derive the ring count from the
+      // seed-built course locally (see MultiplayerGame). Kept on the snapshot at 0 only for
+      // the legacy harnesses that still read it.
+      ringCount: 0,
       countdownEndsAt: state.countdownEndsAt,
       raceStartAt: state.raceStartAt ?? 0,
+      finishWindowEndsAt: state.finishWindowEndsAt ?? 0,
       hostId: state.hostId,
       players,
     });
