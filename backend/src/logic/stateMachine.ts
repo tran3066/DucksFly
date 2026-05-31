@@ -26,6 +26,11 @@ export interface PhaseInputs {
   allFinished: boolean;
   /** Epoch ms hard time limit for the race; 0 means no limit. */
   raceDeadline: number;
+  /**
+   * Epoch ms by which the race ends after the FIRST player finishes (first finish + grace);
+   * 0/undefined means nobody has finished yet, so no grace window is running.
+   */
+  finishWindowDeadline?: number;
 }
 
 /**
@@ -46,7 +51,11 @@ export function nextPhase(current: RacePhase, inputs: PhaseInputs): RacePhase {
 
     case "racing": {
       const timedOut = inputs.raceDeadline > 0 && inputs.now >= inputs.raceDeadline;
-      return inputs.allFinished || timedOut ? "finished" : "racing";
+      const graceExpired =
+        inputs.finishWindowDeadline !== undefined &&
+        inputs.finishWindowDeadline > 0 &&
+        inputs.now >= inputs.finishWindowDeadline;
+      return inputs.allFinished || timedOut || graceExpired ? "finished" : "racing";
     }
 
     case "finished":

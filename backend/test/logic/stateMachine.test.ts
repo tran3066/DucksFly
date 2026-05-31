@@ -88,6 +88,25 @@ describe("nextPhase", () => {
         nextPhase("racing", { ...base, now: 999_999, raceDeadline: 0, allFinished: false }),
       ).toBe("racing");
     });
+
+    it("keeps racing while the finish-grace window is still open", () => {
+      expect(
+        nextPhase("racing", { ...base, now: 10_000, finishWindowDeadline: 30_000 }),
+      ).toBe("racing");
+    });
+
+    it("finishes once the finish-grace window has elapsed", () => {
+      expect(
+        nextPhase("racing", { ...base, now: 30_000, finishWindowDeadline: 30_000 }),
+      ).toBe("finished");
+    });
+
+    it("ignores a zero/absent finish-grace deadline", () => {
+      expect(nextPhase("racing", { ...base, now: 999_999, finishWindowDeadline: 0 })).toBe(
+        "racing",
+      );
+      expect(nextPhase("racing", { ...base, now: 999_999 })).toBe("racing");
+    });
   });
 
   describe("from finished", () => {

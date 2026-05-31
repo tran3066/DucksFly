@@ -1,72 +1,11 @@
 /**
- * Ring/lap validation + leaderboard (server-authoritative scoring, docs/ARCHITECTURE.md §3).
- * All functions are pure and never mutate their inputs. Rings are passed in order
- * (0, 1, ..., ringsPerLap-1) each lap; completing the last ring increments the lap;
- * completing `totalLaps` finishes the player and stamps a finish time.
+ * Leaderboard ranking (docs/ARCHITECTURE.md §3). Pure and side-effect-free.
+ *
+ * Ring passing, lap counting, and finish detection all happen client-side now and arrive
+ * folded into the pose stream — the server keeps no course geometry. All this module does is
+ * order players for the leaderboard: finishers first (by finish time), then everyone else by
+ * how far they got (rings passed). `ringsPassed`/`finishTime` are server-stored, client-fed.
  */
-
-/** One player's ring progress. */
-export interface RingProgress {
-  ringsPassed: number;
-  /** Completed laps so far. */
-  lap: number;
-  finished: boolean;
-  /** Epoch ms the player finished, or 0 if not finished. */
-  finishTime: number;
-}
-
-/** Course configuration scoring is evaluated against. */
-export interface ScoringConfig {
-  ringsPerLap: number;
-  totalLaps: number;
-}
-
-/** Result of attempting a ring pass: the (new) progress and whether it was accepted. */
-export interface RingPassResult {
-  progress: RingProgress;
-  accepted: boolean;
-}
-
-/** A fresh, independent progress object. */
-export function initialProgress(): RingProgress {
-  return { ringsPassed: 0, lap: 0, finished: false, finishTime: 0 };
-}
-
-/**
- * Validate and apply a ring pass. Returns a new progress object (the input is never
- * mutated). A pass is rejected — leaving progress unchanged — if the player has already
- * finished or the ring is not the next expected one in sequence.
- */
-export function applyRingPass(
-  progress: RingProgress,
-  ringId: number,
-  now: number,
-  config: ScoringConfig,
-): RingPassResult {
-  if (progress.finished) {
-    return { progress: { ...progress }, accepted: false };
-  }
-
-  const expectedRing = progress.ringsPassed % config.ringsPerLap;
-  if (ringId !== expectedRing) {
-    return { progress: { ...progress }, accepted: false };
-  }
-
-  const ringsPassed = progress.ringsPassed + 1;
-  let lap = progress.lap;
-  let finished: boolean = progress.finished;
-  let finishTime = progress.finishTime;
-
-  if (ringsPassed % config.ringsPerLap === 0) {
-    lap += 1;
-    if (lap >= config.totalLaps) {
-      finished = true;
-      finishTime = now;
-    }
-  }
-
-  return { progress: { ringsPassed, lap, finished, finishTime }, accepted: true };
-}
 
 /** One player's standing, before ranking. */
 export interface LeaderboardInput {
