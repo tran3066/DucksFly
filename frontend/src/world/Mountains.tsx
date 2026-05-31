@@ -167,7 +167,7 @@ function MountainGroup({
   }, [geometry, baseHeight])
 
   return (
-    <Instances geometry={colored} material={material} limit={placements.length}>
+    <Instances geometry={colored} material={material} limit={placements.length} castShadow receiveShadow>
       {placements.map((p) => {
         const scale = p.height / baseHeight
         const x = p.side * (halfWidth + radius * scale * OUTWARD_FRACTION)

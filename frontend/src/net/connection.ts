@@ -7,6 +7,7 @@ import {
   type SpinOutPayload,
 } from "@shared/messages";
 import type { PlayerView, RaceSnapshot } from "./types";
+import { getServerUrl } from "./serverConfig";
 
 /**
  * Networking layer for Person C / the game to build on. `RaceConnection` owns the single
@@ -15,14 +16,9 @@ import type { PlayerView, RaceSnapshot } from "./types";
  * spin-out event are exposed as direct methods/callbacks so the render loop never has to
  * touch the SDK directly.
  *
- * The server URL comes from VITE_SERVER_URL so you can point at localhost, a LAN IP, or a
- * deployed host without code changes (see backend/HowToRun.md).
+ * The server URL is chosen at runtime (query param / picker / localStorage), falling back to
+ * VITE_SERVER_URL — see net/serverConfig.ts. Use `getServerUrl()` to read the current value.
  */
-
-const DEFAULT_SERVER_URL = "wss://ducksfly.fly.dev";
-
-export const SERVER_URL: string =
-  (import.meta.env.VITE_SERVER_URL as string | undefined) ?? DEFAULT_SERVER_URL;
 
 const INITIAL_SNAPSHOT: RaceSnapshot = {
   status: "idle",
@@ -84,7 +80,7 @@ class RaceConnection {
     for (const listener of this.listeners) listener();
   }
 
-  async join(options: JoinOptions, url: string = SERVER_URL): Promise<void> {
+  async join(options: JoinOptions, url: string = getServerUrl()): Promise<void> {
     if (this.snapshot.status === "connecting") return;
     this.update({ status: "connecting", error: undefined });
 

@@ -33,7 +33,7 @@ export const LIGHTING_PRESETS = {
     exposure: 1.2,
   },
   day: {
-    sunDir: [-40, 90, 30],
+    sunDir: [-40, 90, 30], // keep in sync with theme/palette.ts SUN_DIR
     sunColor: '#fff4d6',
     sunIntensity: 1.6,
     hemiSky: '#bcdcff',

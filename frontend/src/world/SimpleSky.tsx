@@ -1,13 +1,34 @@
 import { useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
-import { Instance, Instances, useFBX, useTexture } from '@react-three/drei'
+import { Instance, Instances, useFBX } from '@react-three/drei'
 import { useFlattenedGeometry } from './useFlattenedGeometry'
 import { deriveSeed, makeRng, randRange, type MapDef } from '../map'
+import { SKY_HORIZON, SKY_TOP, SUN_COLOR, SUN_DIR } from '../theme/palette'
 
 const SKY_DIR = '/models/SimpleSky'
-const SKY_TEXTURE = `${SKY_DIR}/SimpleSky.png`
 const DOME_FILE = `${SKY_DIR}/SkyDome.fbx`
+
+const sunDirection = new THREE.Vector3(...SUN_DIR).normalize()
+
+/** Clear blue sky gradient (replaces the dark baked SimpleSky.png). */
+function createSkyGradientTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas')
+  canvas.width = 4
+  canvas.height = 256
+  const ctx = canvas.getContext('2d')!
+  const grad = ctx.createLinearGradient(0, 0, 0, canvas.height)
+  grad.addColorStop(0, SKY_TOP)
+  grad.addColorStop(0.55, '#7EC8FF')
+  grad.addColorStop(1, SKY_HORIZON)
+  ctx.fillStyle = grad
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.magFilter = THREE.LinearFilter
+  tex.minFilter = THREE.LinearFilter
+  return tex
+}
 
 const DOME_RADIUS = 2500 // world units; must stay inside the camera's far plane
 const CLOUD_VARIANTS = [1, 2, 3, 4, 5, 6] as const
@@ -21,18 +42,51 @@ export function SimpleSky({ map }: { map: MapDef }) {
   return (
     <>
       <SkyDome />
+      <SunDisc />
       <Clouds map={map} />
     </>
   )
 }
 
+/** Painted sun disc, locked to the same direction as the directional light. */
+function SunDisc() {
+  const ref = useRef<THREE.Group>(null)
+
+  useFrame(({ camera }) => {
+    if (!ref.current) return
+    ref.current.position
+      .copy(camera.position)
+      .add(sunDirection.clone().multiplyScalar(DOME_RADIUS * 0.93))
+    ref.current.lookAt(camera.position)
+  })
+
+  return (
+    <group ref={ref}>
+      <mesh renderOrder={-1}>
+        <circleGeometry args={[220, 32]} />
+        <meshBasicMaterial
+          color="#fff9eb"
+          transparent
+          opacity={0.45}
+          toneMapped={false}
+          fog={false}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh renderOrder={-1}>
+        <circleGeometry args={[95, 32]} />
+        <meshBasicMaterial color={SUN_COLOR} toneMapped={false} fog={false} depthWrite={false} />
+      </mesh>
+    </group>
+  )
+}
+
 function SkyDome() {
   const fbx = useFBX(DOME_FILE)
-  const tex = useTexture(SKY_TEXTURE)
   const ref = useRef<THREE.Group>(null)
 
   const dome = useMemo(() => {
-    tex.colorSpace = THREE.SRGBColorSpace
+    const tex = createSkyGradientTexture()
     tex.flipY = false // FBX UVs; flip to true if the gradient renders upside-down
 
     const root = fbx.clone(true)
@@ -59,7 +113,7 @@ function SkyDome() {
       }
     })
     return { root, scale }
-  }, [fbx, tex])
+  }, [fbx])
 
   // Follow the camera so the sky never gets closer / never falls behind.
   useFrame(({ camera }) => {
@@ -132,7 +186,7 @@ function CloudGroup({
 }) {
   const { geometry, baseHeight } = useFlattenedGeometry(`${SKY_DIR}/Cloud_0${variant}.fbx`)
   return (
-    <Instances geometry={geometry} material={material} limit={items.length}>
+    <Instances geometry={geometry} material={material} limit={items.length} castShadow receiveShadow>
       {items.map((it) => (
         <Instance
           key={it.id}
