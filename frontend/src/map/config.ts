@@ -18,6 +18,6 @@ export const DEFAULT_MAP_CONFIG: MapConfig = {
   treeBandWidth: 140,
   treeRowGap: 24, // dense enough to read as forward motion
   treesPerRowSide: 4,
-  treeMinHeight: 6,
-  treeMaxHeight: 18,
+  treeMinHeight: 12,
+  treeMaxHeight: 36,
 };

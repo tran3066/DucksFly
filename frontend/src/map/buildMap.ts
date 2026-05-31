@@ -69,34 +69,33 @@ function buildScenery(seed: number, cfg: MapConfig): SceneryItem[] {
   const items: SceneryItem[] = [];
   let id = 0;
 
-  // Trees in rows down both flanks (salt 0x2). Random variant + yaw per tree.
+  // Trees in rows across the corridor (salt 0x2), biased toward the centerline.
+  // Random variant + yaw per tree.
   const tr = makeRng(deriveSeed(seed, 0x2));
+  const treesPerRow = cfg.treesPerRowSide * 2;
   for (let z = 0; z <= cfg.length; z += cfg.treeRowGap) {
-    for (const side of [-1, 1]) {
-      for (let i = 0; i < cfg.treesPerRowSide; i++) {
-        const x = side * randRange(tr, cfg.halfWidth + 4, cfg.halfWidth + cfg.treeBandWidth);
-        const zJit = z + randRange(tr, -cfg.treeRowGap * 0.5, cfg.treeRowGap * 0.5);
-        const height = randRange(tr, cfg.treeMinHeight, cfg.treeMaxHeight);
-        items.push({
-          id: id++,
-          kind: 'tree',
-          variant: 1 + Math.floor(tr() * 5),
-          pos: [x, 0, zJit],
-          rotationY: tr() * Math.PI * 2,
-          height,
-        });
-      }
+    for (let i = 0; i < treesPerRow; i++) {
+      const x = centeredX(tr, cfg.halfWidth);
+      const zJit = z + randRange(tr, -cfg.treeRowGap * 0.5, cfg.treeRowGap * 0.5);
+      const height = randRange(tr, cfg.treeMinHeight, cfg.treeMaxHeight);
+      items.push({
+        id: id++,
+        kind: 'tree',
+        variant: 1 + Math.floor(tr() * 5),
+        pos: [x, 0, zJit],
+        rotationY: tr() * Math.PI * 2,
+        height,
+      });
     }
   }
 
   // Ground detail (bushes/rocks/grass/flowers/mushrooms/stumps/branches),
-  // randomly scattered through the same outside-the-wall bands.
+  // randomly scattered across the corridor, also biased toward the center.
   for (const spec of DETAIL_SCATTER) {
     const rng = makeRng(deriveSeed(seed, spec.salt));
     const count = Math.round(spec.per100m * (cfg.length / 100));
     for (let i = 0; i < count; i++) {
-      const side = rng() < 0.5 ? -1 : 1;
-      const x = side * randRange(rng, cfg.halfWidth + 2, cfg.halfWidth + cfg.treeBandWidth);
+      const x = centeredX(rng, cfg.halfWidth);
       const z = randRange(rng, 0, cfg.length);
       items.push({
         id: id++,
@@ -110,6 +109,15 @@ function buildScenery(seed: number, cfg: MapConfig): SceneryItem[] {
   }
 
   return items;
+}
+
+/**
+ * Lateral position biased toward the centerline: a triangular distribution over
+ * [-half, +half] that peaks at x=0, so scenery clusters in the middle of the
+ * corridor rather than at the edges.
+ */
+function centeredX(rng: () => number, half: number): number {
+  return (rng() + rng() - 1) * half;
 }
 
 function buildCheckpoints(cfg: MapConfig): Checkpoint[] {
