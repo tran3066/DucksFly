@@ -21,6 +21,7 @@ import { createFlightState, DEFAULT_FLIGHT, type FlightConfig } from './flight'
 import { BOOST } from './gameConfig'
 import { FlightScene } from './FlightScene'
 import type { FlightRigProps } from './FlightRig'
+import { CrashFlash } from './CrashFlash'
 import { RemoteDucks } from './RemoteDuck'
 import { raceConnection } from '../net/connection'
 import { getServerUrl } from '../net/serverConfig'
@@ -140,6 +141,10 @@ export function MultiplayerGame({ onExit }: { onExit?: () => void }) {
     })
   }, [race.sessionId])
 
+  // Local red flash when we crash into a tree / ring rim (client-local respawn).
+  const [crashAt, setCrashAt] = useState(0)
+  const onCrash = useRef(() => setCrashAt(performance.now())).current
+
   const reportRing = (ringId: number) => {
     // Server validates passes in order; out-of-range ids are harmlessly ignored.
     if (race.ringCount > 0 && ringId >= race.ringCount) return
@@ -176,6 +181,7 @@ export function MultiplayerGame({ onExit }: { onExit?: () => void }) {
     boostDurationRef,
     onRingsChanged: syncRings,
     onRingPassed: reportRing,
+    onCrash,
   }
 
   return (
@@ -190,6 +196,8 @@ export function MultiplayerGame({ onExit }: { onExit?: () => void }) {
       >
         <RemoteDucks players={race.players} sessionId={race.sessionId} />
       </FlightScene>
+
+      <CrashFlash at={crashAt} />
 
       {race.phase === 'racing' && <RaceHud race={race} self={self} spinning={spinning} />}
       {race.phase === 'countdown' && <Countdown endsAt={race.countdownEndsAt} />}

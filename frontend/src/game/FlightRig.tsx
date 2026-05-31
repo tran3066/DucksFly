@@ -20,12 +20,18 @@ import { useFrame } from '@react-three/fiber'
 import { Group } from 'three'
 import type { DuckActions, DuckState } from '../physics'
 import type { KeyActions } from '../input/keyboard'
-import { ringCrossing, DEFAULT_MAP_CONFIG, type MapDef } from '../map'
+import { ringCrossing, ringRimHit, treeHit, DEFAULT_MAP_CONFIG, type MapDef } from '../map'
 import { Duck } from '../avatar/Duck'
 import type { DuckVariant } from '../avatar/loadDuck'
 import { type AnimMapConfig } from '../avatar/animationMap'
-import { flightStep, type FlightConfig } from './flight'
+import { flightStep, createFlightState, type FlightConfig } from './flight'
+import { lastCheckpointZ } from './respawn'
 import { MAX_FRAME_DT, BOOST } from './gameConfig'
+
+/** Invulnerability window after a respawn, ms (matches the MP spin-out window). */
+const RESPAWN_INVULN_MS = 1200
+/** Broad-phase cull: only test trees within this |Δz| of the duck, meters. */
+const TREE_CULL_Z = 8
 
 export interface FlightRigProps {
   stateRef: React.RefObject<DuckState>
@@ -57,6 +63,8 @@ export interface FlightRigProps {
   onRingsChanged?: () => void
   /** Fired once per newly-passed ring (MP reports it to the server). */
   onRingPassed?: (ringId: number) => void
+  /** Fired when the local duck crashes (tree/ring rim) and respawns; drives the flash. */
+  onCrash?: () => void
 }
 
 export function FlightRig({
@@ -83,8 +91,11 @@ export function FlightRig({
   boostDurationRef,
   onRingsChanged,
   onRingPassed,
+  onCrash,
 }: FlightRigProps) {
   const accRef = useRef(0)
+  // performance.now() ms until which collisions are ignored (post-respawn grace).
+  const invulnUntilRef = useRef(0)
 
   useFrame((_, delta) => {
     const cfg = cfgRef.current
@@ -116,8 +127,10 @@ export function FlightRig({
       mergedRef.current = merged
 
       const rings = mapRef.current.rings
+      const scenery = mapRef.current.scenery
       const duckRadius = DEFAULT_MAP_CONFIG.duckRadius
       let ringsChanged = false
+      let crashedThisFrame = false
 
       while (accRef.current >= cfg.fixedDt) {
         const stepActions: DuckActions = { ...merged, flapImpulse: impulseRef.current }
@@ -154,10 +167,55 @@ export function FlightRig({
           }
         }
 
+        // Collision -> respawn (client-local; deterministic from the seed so every
+        // client agrees). Trees + ring rims only; bird-vs-bird is server-ruled.
+        // Skipped during the post-respawn invulnerability grace.
+        if (performance.now() >= invulnUntilRef.current) {
+          let crashed = false
+
+          // Ring rims: only rings not yet cleanly passed can clip you. Uses the same
+          // [prevZ, currZ] plane crossing as the pass test (which already ran), and
+          // rim vs hole are geometrically exclusive, so this never double-fires.
+          for (let i = 0; i < rings.length && !crashed; i++) {
+            const ring = rings[i]
+            if (passedRingsRef.current.has(ring.id)) continue
+            if (ringRimHit(prevZ, s2.position[2], s2.position[0], s2.position[1], ring, duckRadius)) {
+              crashed = true
+            }
+          }
+
+          // Tree trunks (broad-phase culled to the duck's current Z slab).
+          for (let t = 0; t < scenery.length && !crashed; t++) {
+            const item = scenery[t]
+            if (item.kind !== 'tree') continue
+            if (Math.abs(item.pos[2] - s2.position[2]) > TREE_CULL_Z) continue
+            if (treeHit(s2.position[0], s2.position[1], s2.position[2], item, duckRadius)) {
+              crashed = true
+            }
+          }
+
+          if (crashed) {
+            const cpZ = lastCheckpointZ(s2.position[2], mapRef.current.checkpoints)
+            // Fresh state zeroes velocity + the eased _lean/_flap/_dive slots; keep
+            // only the checkpoint Z (respawn on the centerline at the start altitude).
+            const fresh = createFlightState()
+            fresh.position = [0, fresh.position[1], cpZ]
+            stateRef.current = fresh
+            boostRef.current = 0 // consume any boost on a crash
+            invulnUntilRef.current = performance.now() + RESPAWN_INVULN_MS
+            crashedThisFrame = true
+            break // stop integrating further sub-steps from the respawned state
+          }
+        }
+
         accRef.current -= cfg.fixedDt
       }
 
       if (ringsChanged) onRingsChanged?.()
+      if (crashedThisFrame) {
+        accRef.current = 0 // drop leftover sub-step time so respawn doesn't jump
+        onCrash?.()
+      }
 
       if (enableFinish) {
         const end = mapRef.current.length
