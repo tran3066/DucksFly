@@ -7,7 +7,9 @@
 import { Suspense, type ReactNode } from 'react'
 import { Canvas } from '@react-three/fiber'
 import type { MapDef } from '../map'
+import { SKY_HORIZON } from '../theme/palette'
 import { SimpleSky } from '../world/SimpleSky'
+import { WorldLighting } from '../world/WorldLighting'
 import { MapView } from '../test/MapView'
 import { FollowCamera } from '../avatar/FollowCamera'
 import { type FollowCameraConfig } from '../avatar/followConfig'
@@ -38,12 +40,16 @@ export function FlightScene({
 }: FlightSceneProps) {
   return (
     <Canvas shadows camera={{ position: startCam, fov: 62, near: 0.1, far: 8000 }}>
+      <color attach="background" args={[SKY_HORIZON]} />
       <Suspense fallback={null}>
         <SimpleSky map={map} />
       </Suspense>
-      <ambientLight intensity={0.6} />
-      <hemisphereLight color="#ffffff" groundColor="#c8d2dc" intensity={0.5} />
-      <directionalLight position={[50, 80, 20]} intensity={1.2} castShadow />
+      <WorldLighting
+        preset="day"
+        followRef={rig.stateRef}
+        sunDistance={180}
+        shadowExtent={160}
+      />
       <MapView map={map} passedRingIds={passedRingIds} ringPulseAt={ringPulseAt} />
       <FlightRig {...rig} />
       {children}

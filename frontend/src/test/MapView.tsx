@@ -123,7 +123,7 @@ function Ring({
   return (
     // Default torus lies in the XY plane (hole axis = Z), i.e. a vertical gate the
     // duck flies through travelling along +Z. No rotation needed.
-    <mesh ref={meshRef} position={ring.pos}>
+    <mesh ref={meshRef} position={ring.pos} castShadow receiveShadow>
       <torusGeometry args={[ring.radius, RING_TUBE, 16, 40]} />
       <meshStandardMaterial
         ref={matRef}
