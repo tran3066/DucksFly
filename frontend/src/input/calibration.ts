@@ -319,12 +319,29 @@ export interface CalibrationState {
   setBaseline: (b: Baseline) => void
   /** Drop the baseline back to null (used by tests and a future "log out"). */
   clearBaseline: () => void
+
+  // True while the full-screen calibration gate is open (capturing a rest pose).
+  // The local-player flight rig reads this to FREEZE the sim during a (re)calibrate
+  // so the duck hovers instead of flying on. Written by WebcamPanel; defaults
+  // false so a build with no camera mounted never freezes.
+  gateOpen: boolean
+  setGateOpen: (open: boolean) => void
+
+  // Whether the in-feed "Recalibrate" button is offered. The game sets this false
+  // during a live multiplayer race (recalibrating would freeze your duck while
+  // others fly) and true everywhere else. Defaults true.
+  recalibrateAllowed: boolean
+  setRecalibrateAllowed: (allowed: boolean) => void
 }
 
 export const useCalibrationStore = create<CalibrationState>((set) => ({
   baseline: null,
   setBaseline: (b) => set({ baseline: b }),
   clearBaseline: () => set({ baseline: null }),
+  gateOpen: false,
+  setGateOpen: (open) => set({ gateOpen: open }),
+  recalibrateAllowed: true,
+  setRecalibrateAllowed: (allowed) => set({ recalibrateAllowed: allowed }),
 }))
 
 // Thin non-React accessors so the pose loop, the recalibrate flow, and the unit

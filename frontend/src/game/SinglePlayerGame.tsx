@@ -16,12 +16,28 @@ import { DEFAULT_FOLLOW } from '../avatar/followConfig'
 import { DEFAULT_ANIM_MAP, type AnimMapConfig } from '../avatar/animationMap'
 import { createFlightState, DEFAULT_FLIGHT, type FlightConfig } from './flight'
 import { BOOST, BOOST_SLIDERS } from './gameConfig'
+import { FLAP_ANIM_SPEED } from './gestureConfig'
 import { FlightScene } from './FlightScene'
 import type { FlightRigProps } from './FlightRig'
 import { CrashFlash } from './CrashFlash'
+import { ControlModeToggle, type ControlMode } from './ModeChooser'
+import { useCalibrationStore } from '../input/calibration'
 import { Overlay, Panel, Button, KeyCap, formatTime, COLORS, FONT, MONO, UI_KEYFRAMES } from './ui'
 
-export function SinglePlayerGame({ onExit }: { onExit?: () => void }) {
+export function SinglePlayerGame({
+  onExit,
+  controlMode,
+  onSetControlMode,
+}: {
+  onExit?: () => void
+  controlMode: ControlMode
+  onSetControlMode: (mode: ControlMode) => void
+}) {
+  const cameraControl = controlMode === 'camera'
+  // Single-player: recalibrating is always fine (it just freezes this one duck).
+  useEffect(() => {
+    useCalibrationStore.getState().setRecalibrateAllowed(true)
+  }, [])
   const stateRef = useRef<DuckState>(createFlightState())
   const actionsRef = useRef<DuckActions>({ ...makeIdleActions(), confidence: 1 }) // slider baseline
   const mergedActionsRef = useRef<DuckActions>(makeIdleActions()) // sliders + keyboard (drives anim + HUD)
@@ -195,10 +211,16 @@ export function SinglePlayerGame({ onExit }: { onExit?: () => void }) {
     cfgRef,
     impulseRef,
     duckRef: duckGroupRef,
-    duckVisual: { scale: duckVisual.scale, modelYaw: duckVisual.modelYaw, crossfade: duckVisual.crossfade },
+    duckVisual: {
+      scale: duckVisual.scale,
+      modelYaw: duckVisual.modelYaw,
+      crossfade: duckVisual.crossfade,
+      flapAnimSpeed: FLAP_ANIM_SPEED,
+    },
     animCfg,
     clipRef,
     keyRef,
+    cameraControl,
     mergedRef: mergedActionsRef,
     mapRef,
     variant: 'male',
@@ -234,8 +256,13 @@ export function SinglePlayerGame({ onExit }: { onExit?: () => void }) {
         boostRef={boostRef}
         passedRingsRef={passedRingsRef}
       />
-      <ControlsHint />
+      <ControlsHint cameraControl={cameraControl} />
       <DebugToggle debug={debug} onToggle={() => setDebug((d) => !d)} />
+      <ControlModeToggle
+        mode={cameraControl ? 'camera' : 'keyboard'}
+        onChange={onSetControlMode}
+        style={{ top: 48, right: 12 }}
+      />
       {onExit && <ExitButton onExit={onExit} />}
       <CrashFlash at={crashAt} />
       {finished && finishStats && (
@@ -375,7 +402,7 @@ function FinishOverlay({
   )
 }
 
-function ControlsHint() {
+function ControlsHint({ cameraControl }: { cameraControl: boolean }) {
   return (
     <div
       style={{
@@ -394,12 +421,21 @@ function ControlsHint() {
         border: '1px solid rgba(120,150,180,0.18)',
       }}
     >
-      <KeyCap>Space</KeyCap> flap
-      <span style={{ margin: '0 8px', color: COLORS.faint }}>·</span>
-      <KeyCap>A</KeyCap>
-      <KeyCap>D</KeyCap> lean
-      <span style={{ margin: '0 8px', color: COLORS.faint }}>·</span>
-      <KeyCap>W</KeyCap> dive
+      {cameraControl ? (
+        <span>
+          Flap your arms to fly · lean your shoulders to turn · drop your arms to dive ·
+          open your mouth to quack
+        </span>
+      ) : (
+        <>
+          <KeyCap>Space</KeyCap> flap
+          <span style={{ margin: '0 8px', color: COLORS.faint }}>·</span>
+          <KeyCap>A</KeyCap>
+          <KeyCap>D</KeyCap> lean
+          <span style={{ margin: '0 8px', color: COLORS.faint }}>·</span>
+          <KeyCap>W</KeyCap> dive
+        </>
+      )}
     </div>
   )
 }

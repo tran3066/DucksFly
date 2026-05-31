@@ -34,6 +34,7 @@ import {
   needsRecalibration,
   isFrameUsable,
   assessFraming,
+  useCalibrationStore,
   type FramingReason,
 } from '../input/calibration'
 import { useInputStore } from '../input/store'
@@ -107,6 +108,10 @@ export interface WebcamPanelProps {
   onActiveChange?: (active: boolean) => void
   // Feed-box width in px; defaults to DEFAULT_PANEL_SIZE.
   panelSize?: number
+  // Whether to offer the in-feed "Recalibrate" button. The game passes false
+  // during a live multiplayer race (a recalibrate would freeze your duck while
+  // others fly). Defaults true; ANDed with the store's recalibrateAllowed flag.
+  allowRecalibrate?: boolean
 }
 
 /**
@@ -117,11 +122,16 @@ export function WebcamPanel({
   onCalibrated,
   onActiveChange,
   panelSize,
+  allowRecalibrate = true,
 }: WebcamPanelProps): React.JSX.Element {
   // --- Webcam state machine (Step 01). start() is the user-gesture entry point
-  //     for getUserMedia; stop() is handled by the hook's controller on unmount
-  //     via track teardown, but we also detach the video below. ---
-  const { status, stream, error, start } = useWebcam()
+  //     for getUserMedia; stop() tears the tracks down (we call it on unmount so
+  //     leaving camera mode actually turns the camera light off). ---
+  const { status, stream, error, start, stop } = useWebcam()
+
+  // The game hides Recalibrate during a live race; ANDed with the prop. Subscribed
+  // (not getState) so the button shows/hides reactively when the phase changes.
+  const recalibrateAllowed = useCalibrationStore((s) => s.recalibrateAllowed)
 
   // The <video> the stream is attached to and the loop reads frames from. Touched
   // only in effects/handlers, never during render.
@@ -160,7 +170,13 @@ export function WebcamPanel({
 
   // Calibration gate state. `calibrated` dismisses the gate for good; `phase`
   // drives the in-gate UI; `countdown` is the visible 3..2..1 number.
-  const [calibrated, setCalibrated] = useState(false)
+  //
+  // Initialized from the SESSION baseline (the calibration store is a module
+  // singleton that survives React remounts and is wiped only on a hard refresh).
+  // So if the player calibrated earlier this session and then toggled camera off
+  // and back on, this panel remounts ALREADY calibrated and skips the gate — no
+  // repeat calibration. A fresh page load starts with baseline === null → gate.
+  const [calibrated, setCalibrated] = useState(() => getBaseline() !== null)
   const [phase, setPhase] = useState<GatePhase>('idle')
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS)
 
@@ -447,6 +463,35 @@ export function WebcamPanel({
     onActiveChange?.(calibrated)
   }, [calibrated, onActiveChange])
 
+  // --- Effect: mirror the gate-open state into the shared calibration store so
+  //     the game's flight rig can freeze the local sim while (re)calibrating
+  //     (without prop-threading across the R3F Canvas boundary). The gate is open
+  //     whenever we are not yet calibrated. ---
+  useEffect(() => {
+    useCalibrationStore.getState().setGateOpen(!calibrated)
+  }, [calibrated])
+
+  // --- Effect: when this panel mounts ALREADY calibrated (the player toggled
+  //     camera off then back on within the session, so the baseline persisted),
+  //     the gate is skipped and there is no "Enable camera" button to start the
+  //     stream. Auto-start it: camera permission was already granted this page
+  //     load, so getUserMedia resolves without a new prompt. On a fresh load we
+  //     are NOT calibrated, so this no-ops and the gate's button drives start(). ---
+  useEffect(() => {
+    if (calibrated && status === 'idle') void start()
+  }, [calibrated, status, start])
+
+  // --- Effect: on unmount (leaving camera mode), stop the camera tracks so the
+  //     webcam light actually turns off, and clear the gate-open flag so a later
+  //     keyboard-only session never sees a stuck freeze. The baseline is left
+  //     untouched in the store so re-enabling camera skips calibration. ---
+  useEffect(() => {
+    return () => {
+      useCalibrationStore.getState().setGateOpen(false)
+      stop()
+    }
+  }, [stop])
+
   // The friendly status text for the chip and the gate. modelError takes priority
   // because a dead model means no dots will ever appear.
   const statusLabel = modelError
@@ -605,8 +650,9 @@ export function WebcamPanel({
         {/* Recalibrate control + drift hint (03.3). Sibling of the status chip
             (NOT inside the mirror wrapper) so the button and text read normally.
             Shown only once the gate is dismissed and the camera is live; clicking
-            re-opens the gate for a fresh capture. */}
-        {calibrated && isReady && (
+            re-opens the gate for a fresh capture. Hidden when the host disallows
+            recalibration (e.g. during a live multiplayer race). */}
+        {calibrated && isReady && allowRecalibrate && recalibrateAllowed && (
           <div
             style={{
               position: 'absolute',
