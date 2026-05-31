@@ -85,7 +85,7 @@ npm i -D @types/three
 | @types/three | match three | Type definitions for three. | Keep aligned with the three version. |
 
 The duck loader at
-[frontend/public/models/duck/loadDuck.ts](../frontend/public/models/duck/loadDuck.ts)
+[frontend/src/world/loadDuck.ts](../frontend/src/world/loadDuck.ts)
 already imports three; installing three makes it compile.
 
 ### Body tracking

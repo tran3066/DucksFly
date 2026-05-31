@@ -8,17 +8,18 @@ the web-relevant files only — all Unity engine glue (`.meta`, `.cs`, `.mat`,
 ## Files
 This folder holds only the **binary assets** (served statically by Vite at
 `/models/duck/...`). The loader, clip data, and R3F component live in
-**`frontend/src/duck/`** so TypeScript compiles + bundles them.
+**`frontend/src/world/`** so TypeScript compiles + bundles them.
 
 | File | Where | What it is |
 |---|---|---|
 | `mallard-duck.fbx` | here (`public`) | Rigged mesh + skeleton + all animations (3.7 MB, FBX 7400 binary) |
 | `mallard-male.png` | here (`public`) | Male (green-head) texture — 32×32 color atlas |
 | `mallard-female.png` | here (`public`) | Female (brown) texture — 32×32 color atlas |
-| `animations.json` | `src/duck/` | Frame ranges that slice the single FBX take into 22 named clips |
-| `loadDuck.ts` | `src/duck/` | Loader: applies the texture + re-slices the clips for three.js |
-| `Duck.tsx` | `src/duck/` | React-three-fiber `<Duck />` component (wraps `loadDuck`) |
-| `DuckPreview.tsx` | `src/duck/` | Dev harness to eyeball variants/clips/scale |
+| `animations.json` | `src/world/` | Frame ranges that slice the single FBX take into 22 named clips |
+| `loadDuck.ts` | `src/world/` | Loader: applies the texture + re-slices the clips for three.js |
+| `Duck.tsx` | `src/world/` | React-three-fiber `<Duck />` component (wraps `loadDuck`) |
+| `DuckPreview.tsx` | `src/world/` | Dev harness to eyeball variants/clips/scale |
+| `NatureProp.tsx` | `src/world/` | Loader + presets for the SimpleNaturePack props (Tree/Bush/Rock/…) |
 
 ## Two things that will bite you if you don't know them
 
@@ -36,9 +37,10 @@ This folder holds only the **binary assets** (served statically by Vite at
 **React-three-fiber (preferred)** — use the `<Duck />` component:
 
 ```tsx
-import { Duck } from '../duck/Duck'
+import { Duck } from '../world/Duck' // adjust to your file's location
 
-<Duck variant="male" clip="flight_straight" position={[0, 2, 0]} scale={1} />
+// A sensible scale is baked into <Duck> already; override only if needed.
+<Duck variant="male" clip="flight_straight" position={[0, 2, 0]} />
 ```
 
 Drive animation declaratively via the `clip` prop, or imperatively from a fast
@@ -53,7 +55,7 @@ const duckRef = useRef<LoadedDuck | null>(null)
 **Plain three.js** — use the loader directly:
 
 ```ts
-import { loadDuck } from '../duck/loadDuck'
+import { loadDuck } from '../world/loadDuck'
 
 const duck = await loadDuck('male')   // or 'female'
 scene.add(duck.scene)

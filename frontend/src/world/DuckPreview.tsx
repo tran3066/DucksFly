@@ -2,7 +2,24 @@ import { Suspense, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Grid, OrbitControls } from '@react-three/drei'
 import { Duck } from './Duck'
-import { Bush, Tree } from './NatureProp'
+import {
+  Branch,
+  Bush,
+  BUSH_VARIANTS,
+  Flowers,
+  FLOWER_VARIANTS,
+  Grass,
+  GRASS_VARIANTS,
+  Ground,
+  GROUND_VARIANTS,
+  Mushroom,
+  MUSHROOM_VARIANTS,
+  Rock,
+  ROCK_VARIANTS,
+  Stump,
+  Tree,
+  TREE_VARIANTS,
+} from './NatureProp'
 import type { ClipName, DuckVariant } from './loadDuck'
 
 // A few representative clips for eyeballing the animations.
@@ -42,8 +59,37 @@ export function DuckPreview() {
         />
         <Duck variant={variant} clip={clip} scale={scale} />
         <Suspense fallback={null}>
-          <Tree position={[3, 0, 0]} />
-          <Bush position={[-3, 0, 0]} />
+          {/* All five tree variants in a row behind the duck. */}
+          {TREE_VARIANTS.map((v, i) => (
+            <Tree key={v} variant={v} position={[(i - 2) * 4, 0, -5]} />
+          ))}
+          {/* Three ground tiles laid edge-to-edge (~12 units each) to show tiling. */}
+          {GROUND_VARIANTS.map((v, i) => (
+            <Ground key={v} variant={v} position={[(i - 1) * 12, 0, 10]} />
+          ))}
+          {/* All five rocks in a row to the side. */}
+          {ROCK_VARIANTS.map((v, i) => (
+            <Rock key={v} variant={v} position={[(i - 2) * 3, 0, 3]} />
+          ))}
+          {/* Both grass tufts near the duck. */}
+          {GRASS_VARIANTS.map((v, i) => (
+            <Grass key={v} variant={v} position={[i * 1.5 - 0.75, 0, 1.5]} />
+          ))}
+          {/* Both flower clusters near the duck. */}
+          {FLOWER_VARIANTS.map((v, i) => (
+            <Flowers key={v} variant={v} position={[i * 1.5 - 0.75, 0, 2.5]} />
+          ))}
+          {/* All three bushes in a row to the left. */}
+          {BUSH_VARIANTS.map((v, i) => (
+            <Bush key={v} variant={v} position={[-3, 0, (i - 1) * 2]} />
+          ))}
+          {/* Both mushrooms. */}
+          {MUSHROOM_VARIANTS.map((v, i) => (
+            <Mushroom key={v} variant={v} position={[i * 1 - 0.5, 0, 3.5]} />
+          ))}
+          {/* Single props: a fallen branch and a stump. */}
+          <Branch position={[-5, 0, 3]} />
+          <Stump position={[5, 0, 3]} />
         </Suspense>
         <Grid
           args={[20, 20]}
