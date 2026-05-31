@@ -67,17 +67,17 @@ export const MAX_FRAME_DT = 0.1
 
 export const BOOST = {
   /** Default initial kick size (units/sec). Drives the `boostSpeed` slider value. */
-  speed: 10000,
+  speed: 120,
 
   /** Default fade time (seconds). Drives the `boostDuration` slider value. */
-  durationSec: 20,
+  durationSec: 2,
 
   /**
    * Shape of the fade (unitless). After `durationSec` the remaining boost is
    * exp(-decaySharpness) of the initial kick: 6 -> ~0.2% left, 3 -> ~5% left.
    * Higher = more abrupt cut-off; lower = a longer lingering tail.
    */
-  decaySharpness: 0.001,
+  decaySharpness: 1,
 
   /**
    * Below this many units/sec the leftover boost is imperceptible, so we snap it
