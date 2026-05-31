@@ -22,7 +22,19 @@ import type { FlightRigProps } from './FlightRig'
 import { CrashFlash } from './CrashFlash'
 import { ControlModeToggle, type ControlMode } from './ModeChooser'
 import { useCalibrationStore } from '../input/calibration'
-import { Overlay, Panel, Button, KeyCap, formatTime, COLORS, FONT, MONO, UI_KEYFRAMES } from './ui'
+import {
+  Button,
+  COLORS,
+  FONT_BODY as FONT,
+  FONT_DISPLAY,
+  FONT_MONO as MONO,
+  KeyCap,
+  Overlay,
+  Panel,
+  UI_KEYFRAMES,
+  cutPath,
+  formatTime,
+} from './ui'
 
 export function SinglePlayerGame({
   onExit,
@@ -269,7 +281,7 @@ export function SinglePlayerGame({
       <ControlModeToggle
         mode={cameraControl ? 'camera' : 'keyboard'}
         onChange={onSetControlMode}
-        style={{ top: 48, right: 12 }}
+        style={{ top: 20, right: 230 }}
       />
       {onExit && <ExitButton onExit={onExit} />}
       <CrashFlash at={crashAt} />
@@ -421,39 +433,58 @@ function Hud({
   }, [stateRef, actionsRef, clipRef, boostRef, passedRingsRef])
 
   const { s, a, clip, boost, ringsPassed } = snap
-  const row = (label: string, value: string) => (
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
-      <span style={{ opacity: 0.6 }}>{label}</span>
-      <span>{value}</span>
+  const row = (label: string, value: string, accent = false) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, padding: '2.5px 0' }}>
+      <span style={{ color: COLORS.hudDim }}>{label}</span>
+      <span style={{ color: accent ? COLORS.yellow : COLORS.hudText, fontWeight: 500 }}>{value}</span>
+    </div>
+  )
+  const header = (text: string) => (
+    <div
+      style={{
+        color: COLORS.hudDim,
+        textAlign: 'center',
+        fontWeight: 700,
+        letterSpacing: 3,
+        fontSize: '0.62rem',
+        padding: '0 0 9px',
+        margin: '0 0 9px',
+        borderBottom: `1px solid ${COLORS.hudLine}`,
+      }}
+    >
+      {text}
     </div>
   )
   return (
     <div
       style={{
         position: 'absolute',
-        top: 12,
-        left: 12,
-        padding: '12px 14px',
-        borderRadius: 8,
-        background: 'rgba(20,30,40,0.78)',
-        color: '#eaf4ff',
-        font: '13px/1.5 ui-monospace, monospace',
-        minWidth: 220,
+        top: 20,
+        left: 20,
+        width: 212,
+        padding: '13px 15px',
+        background: COLORS.hud,
+        color: COLORS.hudText,
+        fontFamily: MONO,
+        fontSize: '0.78rem',
+        border: `1px solid ${COLORS.hudLine}`,
+        clipPath: cutPath(),
+        backdropFilter: 'blur(7px)',
+        WebkitBackdropFilter: 'blur(7px)',
         pointerEvents: 'none',
-        backdropFilter: 'blur(4px)',
       }}
     >
-      <div style={{ opacity: 0.8, marginBottom: 6, fontWeight: 600 }}>STATE</div>
+      {header('FLIGHT')}
       {row('clip', clip || '-')}
       {row('speed', `${(s.speed + boost).toFixed(1)} u/s`)}
       {row('· cruise', `${s.speed.toFixed(1)} u/s`)}
-      {row('· boost', `+${boost.toFixed(1)} u/s`)}
+      {row('· boost', `+${boost.toFixed(1)} u/s`, true)}
       {row('rings', `${ringsPassed}`)}
       {row('altitude', `${s.position[1].toFixed(1)} m`)}
       {row('vert vel', `${s.verticalVel.toFixed(1)} u/s`)}
       {row('lateral X', `${s.position[0].toFixed(1)} m`)}
       {row('distance', `${s.distance.toFixed(0)} m`)}
-      <div style={{ opacity: 0.8, margin: '8px 0 6px', fontWeight: 600 }}>DUCKACTIONS</div>
+      <div style={{ marginTop: 11 }}>{header('INPUT')}</div>
       {row('flap', a.flap.toFixed(2))}
       {row('lean', a.lean.toFixed(2))}
       {row('dive', a.dive.toFixed(2))}
@@ -473,28 +504,49 @@ function FinishOverlay({
   onReset: () => void
   onExit?: () => void
 }) {
-  const stat = (label: string, value: string) => (
+  const stat = (label: string, value: string, color: string) => (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-      <span style={{ fontFamily: MONO, fontSize: '1.5rem', fontWeight: 700, color: COLORS.text }}>
+      <span style={{ fontFamily: MONO, fontSize: '2.1rem', fontWeight: 700, color, lineHeight: 1 }}>
         {value}
       </span>
-      <span style={{ color: COLORS.dim, fontSize: '0.78rem', letterSpacing: 0.5 }}>{label}</span>
+      <span
+        style={{
+          color: COLORS.slateDim,
+          fontFamily: MONO,
+          fontSize: '0.7rem',
+          letterSpacing: 1.5,
+        }}
+      >
+        {label}
+      </span>
     </div>
   )
   return (
     <Overlay dim={0.5}>
-      <Panel width={420} style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: '1.8rem', fontWeight: 800, color: COLORS.gold, marginBottom: 4 }}>
-          🏁 Finish!
+      <Panel width={470} style={{ textAlign: 'center', padding: '34px 44px' }}>
+        <div
+          style={{
+            fontFamily: FONT_DISPLAY,
+            fontSize: '2.2rem',
+            fontWeight: 700,
+            color: COLORS.slate,
+            marginBottom: 4,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: 10,
+          }}
+        >
+          🏁 <span style={{ color: COLORS.orange }}>Finish!</span>
         </div>
-        <p style={{ color: COLORS.dim, margin: '0 0 20px', fontSize: '0.9rem' }}>Nice flying.</p>
-        <div style={{ display: 'flex', justifyContent: 'space-around', margin: '0 0 22px' }}>
-          {stat('time', formatTime(stats.ms))}
-          {stat('rings', String(stats.rings))}
-          {stat('distance', `${stats.distance.toFixed(0)}m`)}
+        <p style={{ color: COLORS.slateDim, margin: '0 0 26px', fontWeight: 500 }}>Nice flying.</p>
+        <div style={{ display: 'flex', gap: 38, justifyContent: 'center', margin: '0 0 28px' }}>
+          {stat('TIME', formatTime(stats.ms), COLORS.cyanDeep)}
+          {stat('RINGS', String(stats.rings), COLORS.yellowDeep)}
+          {stat('DISTANCE', `${stats.distance.toFixed(0)}m`, COLORS.slate)}
         </div>
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-          <Button variant="primary" accent={COLORS.accentBlue} onClick={onReset}>
+        <div style={{ display: 'flex', gap: 13, justifyContent: 'center' }}>
+          <Button variant="primary" onClick={onReset}>
             Fly again
           </Button>
           {onExit && (
@@ -513,37 +565,54 @@ function ControlsHint({ cameraControl }: { cameraControl: boolean }) {
     <div
       style={{
         position: 'absolute',
-        bottom: 16,
+        bottom: 22,
         left: '50%',
         transform: 'translateX(-50%)',
-        padding: '8px 16px',
-        borderRadius: 12,
-        background: 'rgba(10,18,30,0.66)',
-        color: COLORS.text,
-        fontFamily: FONT,
-        fontSize: '0.85rem',
+        padding: '11px 18px',
+        background: COLORS.hud,
+        color: COLORS.hudDim,
+        fontFamily: MONO,
+        fontSize: '0.8rem',
         pointerEvents: 'none',
-        backdropFilter: 'blur(6px)',
-        border: '1px solid rgba(120,150,180,0.18)',
+        backdropFilter: 'blur(7px)',
+        WebkitBackdropFilter: 'blur(7px)',
+        border: `1px solid ${COLORS.hudLine}`,
+        clipPath: cutPath(),
+        display: 'flex',
+        alignItems: 'center',
+        gap: 9,
       }}
     >
       {cameraControl ? (
         <span>
-          Flap your arms to fly · lean your shoulders to turn · drop your arms to dive ·
-          open your mouth to quack
+          Flap your arms to fly · lean your shoulders to turn · drop your arms to dive · open your
+          mouth to quack
         </span>
       ) : (
         <>
-          <KeyCap>Space</KeyCap> flap
-          <span style={{ margin: '0 8px', color: COLORS.faint }}>·</span>
-          <KeyCap>A</KeyCap>
-          <KeyCap>D</KeyCap> lean
-          <span style={{ margin: '0 8px', color: COLORS.faint }}>·</span>
-          <KeyCap>W</KeyCap> dive
+          <KeyCap dark>Space</KeyCap> flap
+          <span style={{ opacity: 0.4 }}>·</span>
+          <KeyCap dark>A</KeyCap>
+          <KeyCap dark>D</KeyCap> lean
+          <span style={{ opacity: 0.4 }}>·</span>
+          <KeyCap dark>W</KeyCap> dive
         </>
       )}
     </div>
   )
+}
+
+const hudChipStyle: React.CSSProperties = {
+  padding: '9px 14px',
+  background: COLORS.hud,
+  border: `1px solid ${COLORS.hudLine}`,
+  color: COLORS.hudText,
+  fontFamily: MONO,
+  fontSize: '0.78rem',
+  cursor: 'pointer',
+  backdropFilter: 'blur(7px)',
+  WebkitBackdropFilter: 'blur(7px)',
+  clipPath: cutPath(8),
 }
 
 function DebugToggle({ debug, onToggle }: { debug: boolean; onToggle: () => void }) {
@@ -552,19 +621,15 @@ function DebugToggle({ debug, onToggle }: { debug: boolean; onToggle: () => void
       type="button"
       onClick={onToggle}
       style={{
+        ...hudChipStyle,
         position: 'absolute',
-        top: 12,
-        right: 12,
-        padding: '6px 12px',
-        borderRadius: 8,
-        border: '1px solid rgba(40,60,80,0.4)',
-        background: debug ? '#3b82f6' : 'rgba(20,30,40,0.72)',
-        color: '#eaf4ff',
-        font: '12px/1 ui-monospace, monospace',
-        cursor: 'pointer',
+        top: 20,
+        right: 20,
+        color: debug ? COLORS.orange : COLORS.hudText,
+        borderColor: debug ? COLORS.orange : COLORS.hudLine,
       }}
     >
-      {debug ? 'debug: ON' : 'debug: off'}
+      debug: {debug ? 'ON' : 'off'}
     </button>
   )
 }
@@ -575,16 +640,10 @@ function ExitButton({ onExit }: { onExit: () => void }) {
       type="button"
       onClick={onExit}
       style={{
+        ...hudChipStyle,
         position: 'absolute',
-        top: 12,
-        right: 110,
-        padding: '6px 12px',
-        borderRadius: 8,
-        border: '1px solid rgba(40,60,80,0.4)',
-        background: 'rgba(20,30,40,0.72)',
-        color: '#eaf4ff',
-        font: '12px/1 ui-monospace, monospace',
-        cursor: 'pointer',
+        top: 20,
+        right: 130,
       }}
     >
       ← menu

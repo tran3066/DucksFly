@@ -4,13 +4,24 @@
 
 import { type CSSProperties, type ReactNode } from 'react'
 import type { PlayerView, RaceSnapshot } from '../../net/types'
-import { COLORS, FONT } from '../ui'
+import { COLORS, FONT_BODY, FONT_DISPLAY, FONT_MONO, cutPath } from '../ui'
 
 /** Labelled vertical form field (name input, duck picker, …). */
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <span style={{ color: COLORS.dim, fontSize: '0.8rem', letterSpacing: 0.5 }}>{label}</span>
+      <span
+        style={{
+          color: COLORS.slateDim,
+          fontSize: '0.78rem',
+          letterSpacing: 0.5,
+          fontFamily: FONT_MONO,
+          fontWeight: 500,
+          textTransform: 'uppercase',
+        }}
+      >
+        {label}
+      </span>
       {children}
     </label>
   )
@@ -27,7 +38,16 @@ export function Segmented({
   onChange: (id: string) => void
 }) {
   return (
-    <div style={{ display: 'flex', gap: 6, background: 'rgba(10,16,28,0.5)', padding: 4, borderRadius: 12 }}>
+    <div
+      style={{
+        display: 'flex',
+        gap: 4,
+        background: 'rgba(32,48,63,0.06)',
+        padding: 4,
+        border: `1px solid ${COLORS.lineD}`,
+        clipPath: cutPath(8),
+      }}
+    >
       {options.map((o) => {
         const active = o.id === value
         return (
@@ -37,15 +57,17 @@ export function Segmented({
             onClick={() => onChange(o.id)}
             style={{
               flex: 1,
-              padding: '9px 10px',
-              borderRadius: 9,
+              padding: '9px 12px',
               border: 'none',
               cursor: 'pointer',
-              fontFamily: FONT,
+              fontFamily: FONT_DISPLAY,
               fontSize: '0.9rem',
               fontWeight: 600,
-              color: active ? '#0b1422' : COLORS.text,
-              background: active ? COLORS.text : 'transparent',
+              color: active ? '#fff' : COLORS.slate,
+              background: active
+                ? `linear-gradient(180deg, ${COLORS.orange}, ${COLORS.orangeDeep})`
+                : 'transparent',
+              clipPath: cutPath(6),
               transition: 'background 0.12s ease, color 0.12s ease',
             }}
           >
@@ -75,11 +97,12 @@ export function RosterTable({ race }: { race: RaceSnapshot }) {
               {p.id === race.sessionId ? ' (you)' : ''}
               {p.id === race.hostId ? ' · host' : ''}
             </Td>
+            <Td style={{ color: COLORS.slateDim }}></Td>
             <Td center>
               {p.ready ? (
-                <span style={{ color: COLORS.good }}>ready</span>
+                <span style={{ color: COLORS.green, fontWeight: 700 }}>ready</span>
               ) : (
-                <span style={{ color: COLORS.faint }}>—</span>
+                <span style={{ color: COLORS.slateDim }}>—</span>
               )}
             </Td>
           </tr>
@@ -108,8 +131,8 @@ export function medal(rank: number): string {
 export function HudRow({ label, value }: { label: string; value: string }) {
   return (
     <div style={hudRowStyle}>
-      <span style={{ color: COLORS.dim }}>{label}</span>
-      <span>{value}</span>
+      <span style={{ color: COLORS.hudDim }}>{label}</span>
+      <span style={{ color: COLORS.hudText, fontWeight: 500 }}>{value}</span>
     </div>
   )
 }
@@ -120,11 +143,13 @@ export function Th({ children, center }: { children: ReactNode; center?: boolean
       style={{
         textAlign: center ? 'center' : 'left',
         padding: '8px 10px',
-        color: COLORS.dim,
-        fontWeight: 600,
-        fontSize: '0.78rem',
-        letterSpacing: 0.5,
-        borderBottom: '1px solid rgba(120,150,180,0.2)',
+        color: COLORS.slateDim,
+        fontWeight: 700,
+        fontSize: '0.7rem',
+        letterSpacing: 1,
+        textTransform: 'uppercase',
+        fontFamily: FONT_MONO,
+        borderBottom: `1px solid ${COLORS.lineD}`,
       }}
     >
       {children}
@@ -145,9 +170,10 @@ export function Td({
     <td
       style={{
         textAlign: center ? 'center' : 'left',
-        padding: '8px 10px',
-        borderBottom: '1px solid rgba(120,150,180,0.1)',
-        fontSize: '0.9rem',
+        padding: '9px 10px',
+        borderBottom: `1px solid ${COLORS.lineD}`,
+        fontSize: '0.92rem',
+        color: COLORS.slate,
         ...style,
       }}
     >
@@ -159,27 +185,29 @@ export function Td({
 // --- shared styles ---
 
 export const titleStyle: CSSProperties = {
-  fontSize: '1.5rem',
-  fontWeight: 800,
+  fontFamily: FONT_DISPLAY,
+  fontSize: '1.7rem',
+  fontWeight: 700,
   margin: '0 0 4px',
   display: 'flex',
   alignItems: 'center',
   gap: 10,
-  color: COLORS.text,
+  color: COLORS.slate,
 }
 
 export const subStyle: CSSProperties = {
   margin: '0 0 18px',
-  color: COLORS.dim,
-  fontSize: '0.9rem',
+  color: COLORS.slateDim,
+  fontSize: '0.95rem',
+  fontFamily: FONT_BODY,
 }
 
 export const linkStyle: CSSProperties = {
   background: 'none',
   border: 'none',
-  color: COLORS.dim,
+  color: COLORS.slateDim,
   cursor: 'pointer',
-  fontFamily: FONT,
+  fontFamily: FONT_BODY,
   fontSize: '0.85rem',
   textDecoration: 'underline',
   padding: 0,
@@ -190,19 +218,19 @@ export const codeBox: CSSProperties = {
   alignItems: 'center',
   justifyContent: 'space-between',
   gap: 16,
-  padding: '14px 16px',
-  borderRadius: 12,
-  background: 'rgba(10,16,28,0.5)',
-  border: '1px solid rgba(120,150,180,0.2)',
+  padding: '14px 18px',
+  background: '#fff',
+  border: `1px solid ${COLORS.lineD}`,
+  clipPath: cutPath(10),
   margin: '8px 0 16px',
 }
 
 export const winnerBox: CSSProperties = {
   textAlign: 'center',
   padding: '16px 18px',
-  borderRadius: 14,
-  background: 'rgba(255,210,63,0.08)',
-  border: '1px solid rgba(255,210,63,0.25)',
+  background: 'rgba(255,138,31,0.1)',
+  border: `1px solid ${COLORS.orange}55`,
+  clipPath: cutPath(10),
   margin: '6px 0 18px',
 }
 
@@ -212,20 +240,22 @@ export const tableStyle: CSSProperties = {
 }
 
 export const rowMe: CSSProperties = {
-  background: 'rgba(255,210,63,0.08)',
+  background: 'rgba(255,138,31,0.08)',
 }
 
+/** Dark HUD panel: chamfered navy chip used for all in-flight chrome. */
 export const hudPanel: CSSProperties = {
   position: 'absolute',
-  padding: '12px 14px',
-  borderRadius: 12,
-  background: 'rgba(10,18,30,0.66)',
-  color: COLORS.text,
-  fontFamily: FONT,
-  fontSize: '0.85rem',
+  padding: '13px 15px',
+  background: COLORS.hud,
+  color: COLORS.hudText,
+  fontFamily: FONT_MONO,
+  fontSize: '0.8rem',
   pointerEvents: 'none',
-  backdropFilter: 'blur(6px)',
-  border: '1px solid rgba(120,150,180,0.18)',
+  backdropFilter: 'blur(7px)',
+  WebkitBackdropFilter: 'blur(7px)',
+  border: `1px solid ${COLORS.hudLine}`,
+  clipPath: cutPath(),
 }
 
 export const hudRowStyle: CSSProperties = {
@@ -233,4 +263,5 @@ export const hudRowStyle: CSSProperties = {
   justifyContent: 'space-between',
   gap: 18,
   lineHeight: 1.7,
+  padding: '2px 0',
 }

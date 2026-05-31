@@ -3,6 +3,16 @@
 // CSS-in-JS (no 3D), so it mounts instantly before any heavy scene loads.
 
 import { useState } from 'react'
+import {
+  BrandMark,
+  COLORS,
+  FONT_BODY,
+  FONT_DISPLAY,
+  KeyCap,
+  SHADOW,
+  UI_KEYFRAMES,
+  cutPath,
+} from './ui'
 
 export type GameMode = 'single' | 'multi'
 
@@ -11,16 +21,13 @@ export function StartMenu({ onPick }: { onPick: (mode: GameMode) => void }) {
 
   return (
     <div style={root}>
-      <style>{KEYFRAMES}</style>
-      <div style={aurora} />
+      <style>{UI_KEYFRAMES}</style>
+      <SkyBackdrop />
 
       <div style={content}>
-        <div style={{ textAlign: 'center', marginBottom: 8 }}>
-          <div style={title}>
-            <span style={{ fontSize: '2.8rem', lineHeight: 1 }}>🦆</span>
-            <span style={{ lineHeight: 1 }}>DucksFly</span>
-          </div>
-          <div style={subtitle}>Flap. Bank. Dive. Race through the rings.</div>
+        <div style={{ textAlign: 'center', animation: 'ducksfly-rise 0.5s both' }}>
+          <BrandMark />
+          <div style={tagline}>Flap. Bank. Dive. Race through the rings.</div>
         </div>
 
         <div style={cardRow}>
@@ -28,7 +35,9 @@ export function StartMenu({ onPick }: { onPick: (mode: GameMode) => void }) {
             icon="🕹️"
             label="Single Player"
             blurb="Fly the course solo. Chase a clean run and a fast time."
-            accent="#3b82f6"
+            accent={COLORS.cyanDeep}
+            iconBg="rgba(41,194,232,0.16)"
+            delay={0.16}
             active={hover === 'single'}
             onEnter={() => setHover('single')}
             onLeave={() => setHover(null)}
@@ -38,7 +47,9 @@ export function StartMenu({ onPick }: { onPick: (mode: GameMode) => void }) {
             icon="🌐"
             label="Multiplayer"
             blurb="Join a lobby and race other ducks live through the same sky."
-            accent="#f59e0b"
+            accent={COLORS.orangeDeep}
+            iconBg="rgba(255,138,31,0.16)"
+            delay={0.24}
             active={hover === 'multi'}
             onEnter={() => setHover('multi')}
             onLeave={() => setHover(null)}
@@ -46,7 +57,19 @@ export function StartMenu({ onPick }: { onPick: (mode: GameMode) => void }) {
           />
         </div>
 
-        <div style={footer}>SPACE flap · A / D lean · W dive</div>
+        <div style={{ ...hints, animation: 'ducksfly-rise 0.5s 0.32s both' }}>
+          <span style={hintGroup}>
+            <KeyCap>Space</KeyCap> flap
+          </span>
+          <span style={hintDot}>·</span>
+          <span style={hintGroup}>
+            <KeyCap>A</KeyCap>/<KeyCap>D</KeyCap> lean
+          </span>
+          <span style={hintDot}>·</span>
+          <span style={hintGroup}>
+            <KeyCap>W</KeyCap> dive
+          </span>
+        </div>
       </div>
     </div>
   )
@@ -57,6 +80,8 @@ function ModeCard({
   label,
   blurb,
   accent,
+  iconBg,
+  delay,
   active,
   onEnter,
   onLeave,
@@ -66,6 +91,8 @@ function ModeCard({
   label: string
   blurb: string
   accent: string
+  iconBg: string
+  delay: number
   active: boolean
   onEnter: () => void
   onLeave: () => void
@@ -79,40 +106,49 @@ function ModeCard({
       onMouseLeave={onLeave}
       style={{
         ...card,
-        transform: active ? 'translateY(-6px) scale(1.02)' : 'none',
-        borderColor: active ? accent : 'rgba(120,150,180,0.25)',
+        transform: active ? 'translateY(-4px)' : 'none',
         boxShadow: active
-          ? `0 18px 50px rgba(0,0,0,0.45), 0 0 0 1px ${accent}, 0 0 40px -8px ${accent}`
-          : '0 12px 32px rgba(0,0,0,0.35)',
+          ? '0 28px 50px -20px rgba(20,40,60,0.55)'
+          : SHADOW,
+        animation: `ducksfly-rise 0.5s ${delay}s both`,
       }}
     >
       <div
+        aria-hidden
         style={{
-          ...cardGlow,
-          background: `radial-gradient(120px 120px at 50% 0%, ${accent}55, transparent 70%)`,
-          opacity: active ? 1 : 0.35,
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          clipPath: cutPath(),
+          background: 'linear-gradient(160deg, rgba(255,255,255,0.6), transparent 38%)',
         }}
       />
-      <div style={{ fontSize: '2.6rem', lineHeight: 1 }}>{icon}</div>
-      <div style={{ fontSize: '1.25rem', fontWeight: 700, marginTop: 14, color: '#f3f8ff' }}>
-        {label}
+      <div style={{ position: 'relative' }}>
+        <div style={{ ...iconWrap, background: iconBg }}>{icon}</div>
+        <div style={cardTitle}>{label}</div>
+        <div style={cardBlurb}>{blurb}</div>
+        <span style={{ ...cardCta, color: accent }}>Play →</span>
       </div>
-      <div style={cardBlurb}>{blurb}</div>
-      <div style={{ ...cardCta, color: accent }}>Play →</div>
     </button>
   )
 }
 
-const KEYFRAMES = `
-@keyframes ducksfly-aurora {
-  0%   { transform: translate3d(-10%, -10%, 0) rotate(0deg); }
-  50%  { transform: translate3d(10%, 5%, 0) rotate(180deg); }
-  100% { transform: translate3d(-10%, -10%, 0) rotate(360deg); }
+/** Static low-poly sky backdrop behind the menu (gradient + cloud silhouettes). */
+function SkyBackdrop() {
+  return (
+    <div
+      aria-hidden
+      style={{
+        position: 'absolute',
+        inset: 0,
+        zIndex: 0,
+        background:
+          'linear-gradient(180deg, #7ec8ff 0%, #b6dcf6 45%, #d7f0fb 62%, #c0d4cd 70%, #8fcb6b 82%, #5e9e58 100%)',
+        pointerEvents: 'none',
+      }}
+    />
+  )
 }
-@keyframes ducksfly-rise {
-  from { opacity: 0; transform: translateY(16px); }
-  to   { opacity: 1; transform: translateY(0); }
-}`
 
 const root: React.CSSProperties = {
   position: 'fixed',
@@ -121,101 +157,101 @@ const root: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  background: 'radial-gradient(140% 120% at 50% -10%, #16314f 0%, #0b1422 55%, #060b14 100%)',
-  fontFamily: 'ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
-}
-
-const aurora: React.CSSProperties = {
-  position: 'absolute',
-  width: '90vmax',
-  height: '90vmax',
-  borderRadius: '45%',
-  background:
-    'conic-gradient(from 0deg, rgba(59,130,246,0.18), rgba(245,158,11,0.16), rgba(34,197,94,0.16), rgba(59,130,246,0.18))',
-  filter: 'blur(60px)',
-  animation: 'ducksfly-aurora 28s linear infinite',
-  pointerEvents: 'none',
+  fontFamily: FONT_BODY,
+  color: COLORS.slate,
 }
 
 const content: React.CSSProperties = {
   position: 'relative',
+  zIndex: 1,
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
-  gap: 34,
+  gap: 30,
   padding: 24,
-  animation: 'ducksfly-rise 0.5s ease both',
 }
 
-const title: React.CSSProperties = {
-  fontSize: '2.6rem',
-  fontWeight: 800,
-  lineHeight: 1.1,
-  letterSpacing: 0.5,
-  color: '#eaf4ff',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: 12,
-  textShadow: '0 4px 24px rgba(0,0,0,0.5)',
-}
-
-const subtitle: React.CSSProperties = {
-  marginTop: 8,
-  color: '#9fb3c8',
-  fontSize: '1rem',
-  letterSpacing: 0.3,
+const tagline: React.CSSProperties = {
+  marginTop: 10,
+  textAlign: 'center',
+  fontFamily: FONT_DISPLAY,
+  fontWeight: 500,
+  fontSize: '1.15rem',
+  color: '#fff',
+  textShadow: '0 2px 8px rgba(20,40,60,0.4)',
 }
 
 const cardRow: React.CSSProperties = {
   display: 'flex',
-  gap: 24,
+  gap: 20,
   flexWrap: 'wrap',
   justifyContent: 'center',
 }
 
 const card: React.CSSProperties = {
   position: 'relative',
-  display: 'flex',
-  flexDirection: 'column',
-  width: 260,
-  minHeight: 230,
-  padding: '28px 24px',
-  borderRadius: 18,
-  border: '1px solid rgba(120,150,180,0.25)',
-  background: 'linear-gradient(180deg, rgba(24,34,50,0.92), rgba(16,24,38,0.92))',
-  color: '#dce8f5',
+  width: 330,
+  padding: 26,
+  background: COLORS.cream,
+  border: `1px solid ${COLORS.lineD}`,
+  clipPath: cutPath(),
+  color: COLORS.slate,
   cursor: 'pointer',
   textAlign: 'left',
-  overflow: 'hidden',
-  transition: 'transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease',
+  transition: 'transform 0.18s ease, box-shadow 0.2s ease',
+  fontFamily: FONT_BODY,
 }
 
-const cardGlow: React.CSSProperties = {
-  position: 'absolute',
-  inset: 0,
-  transition: 'opacity 0.18s ease',
-  pointerEvents: 'none',
+const iconWrap: React.CSSProperties = {
+  width: 54,
+  height: 54,
+  display: 'grid',
+  placeItems: 'center',
+  fontSize: 30,
+  marginBottom: 16,
+  clipPath: cutPath(8),
+}
+
+const cardTitle: React.CSSProperties = {
+  fontFamily: FONT_DISPLAY,
+  fontWeight: 600,
+  fontSize: '1.55rem',
+  marginBottom: 9,
+  color: COLORS.slate,
 }
 
 const cardBlurb: React.CSSProperties = {
-  marginTop: 10,
-  fontSize: '0.9rem',
+  color: COLORS.slateDim,
+  fontWeight: 500,
   lineHeight: 1.5,
-  color: '#9fb3c8',
-}
-
-const cardCta: React.CSSProperties = {
-  marginTop: 'auto',
-  paddingTop: 16,
-  fontWeight: 700,
+  marginBottom: 22,
+  minHeight: 66,
   fontSize: '0.95rem',
 }
 
-const footer: React.CSSProperties = {
-  color: '#5f7a90',
-  fontSize: '0.85rem',
-  letterSpacing: 1,
-  fontFamily: 'ui-monospace, monospace',
-  opacity: 0.7,
+const cardCta: React.CSSProperties = {
+  fontFamily: FONT_DISPLAY,
+  fontWeight: 600,
+  fontSize: '1.1rem',
+}
+
+const hints: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 9,
+  fontWeight: 600,
+  color: COLORS.slateDim,
+  fontSize: '0.95rem',
+  textShadow: '0 1px 2px rgba(255,255,255,0.4)',
+}
+
+const hintGroup: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 7,
+}
+
+const hintDot: React.CSSProperties = {
+  color: COLORS.slateDim,
+  opacity: 0.5,
 }
