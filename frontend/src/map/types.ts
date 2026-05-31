@@ -96,4 +96,10 @@ export interface MapConfig {
   /** Tree height band [min, max] (m). */
   treeMinHeight: number;
   treeMaxHeight: number;
+  /** Extra clearance margin (m) when testing a ring opening against tree trunks. */
+  ringTreeClearance: number;
+  /** Downstream (+Z) length of the tree-free boost lane after each ring (m). */
+  boostLaneLength: number;
+  /** Half-width (x) of the tree-free boost lane around each ring's centerline (m). */
+  boostLaneHalfWidth: number;
 }

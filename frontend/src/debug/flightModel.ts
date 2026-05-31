@@ -83,7 +83,11 @@ export const DEFAULT_FLIGHT: FlightConfig = {
 
 export function createFlightState(): DuckState {
   return {
-    position: [0, 40, 0],
+    // Spawn ABOVE the tree canopy so the start (and every checkpoint respawn, which
+    // reuses this) is always clear of trees. Trees top out at map treeMaxHeight=72m
+    // (collidable to ~73m with the duck radius); 80 keeps a safe margin. This is the
+    // single spawn factory, so camera / MP spawn / respawn all stay consistent.
+    position: [0, 80, 0],
     yaw: 0, // heading locked forever
     speed: DEFAULT_FLIGHT.baseForwardSpeed,
     pitch: 0,
