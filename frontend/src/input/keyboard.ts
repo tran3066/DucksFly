@@ -17,7 +17,7 @@ export interface KeyActions {
 const TRACKED = new Set(['Space', 'KeyA', 'KeyD', 'KeyW'])
 
 // Held-space sustained flap strength. With the flight defaults (lift 34, gravity
-// 14) a held value of 0.9 gives ~30 lift vs 14 gravity = a strong, fast climb
+// 12) a held value of 0.9 gives ~31 lift vs 12 gravity = a strong, fast climb
 // while held; releasing drops back to a descent -- "flap to fly up, glide to
 // sink". A tap also fires a one-shot impulse kick via onImpulse.
 export const HOLD_FLAP_STRENGTH = 0.9

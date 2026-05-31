@@ -19,7 +19,7 @@ import { Group } from 'three'
 import type { DuckActions, DuckState } from '../physics'
 import { makeIdleActions } from '../shared/types/duckActions'
 import { useKeyboardControls, type KeyActions } from '../input/keyboard'
-import { buildMap, DEFAULT_MAP_CONFIG, type MapDef } from '../map'
+import { buildMap, ringCrossing, DEFAULT_MAP_CONFIG, type MapDef } from '../map'
 import { MapView } from '../test/MapView'
 import { SimpleSky } from '../world/SimpleSky'
 import { flightStep, createFlightState, DEFAULT_FLIGHT, type FlightConfig } from './flightModel'
@@ -27,12 +27,7 @@ import { Duck } from '../avatar/Duck'
 import { FollowCamera } from '../avatar/FollowCamera'
 import { DEFAULT_FOLLOW } from '../avatar/followConfig'
 import { DEFAULT_ANIM_MAP, type AnimMapConfig } from '../avatar/animationMap'
-
-const MAX_FRAME_DT = 0.1 // clamp to avoid spiral-of-death after a tab stall
-
-// Rings are cosmetic in the playground (no fly-through boost), so MapView always
-// gets the same empty "passed" set — every ring renders in the not-passed color.
-const EMPTY_RING_IDS = new Set<number>()
+import { MAX_FRAME_DT, BOOST, BOOST_SLIDERS } from './playgroundConfig'
 
 /** Runs the fixed-timestep flight model and positions the duck from the result. */
 function PlaygroundRig({
@@ -49,6 +44,12 @@ function PlaygroundRig({
   mapRef,
   finishedRef,
   onFinish,
+  passedRingsRef,
+  ringPulseAtRef,
+  boostRef,
+  boostSpeedRef,
+  boostDurationRef,
+  onRingsChanged,
 }: {
   stateRef: React.RefObject<DuckState>
   actionsRef: React.RefObject<DuckActions>
@@ -63,6 +64,12 @@ function PlaygroundRig({
   mapRef: React.RefObject<MapDef>
   finishedRef: React.RefObject<boolean>
   onFinish: () => void
+  passedRingsRef: React.RefObject<Set<number>>
+  ringPulseAtRef: React.RefObject<Map<number, number>>
+  boostRef: React.RefObject<number>
+  boostSpeedRef: React.RefObject<number>
+  boostDurationRef: React.RefObject<number>
+  onRingsChanged: () => void
 }) {
   const accRef = useRef(0)
 
@@ -97,12 +104,55 @@ function PlaygroundRig({
       }
       mergedRef.current = merged
 
+      const rings = mapRef.current.rings
+      const duckRadius = DEFAULT_MAP_CONFIG.duckRadius
+      let ringsChanged = false
+
       while (accRef.current >= cfg.fixedDt) {
         const stepActions: DuckActions = { ...merged, flapImpulse: impulseRef.current }
         impulseRef.current = false // one-shot, consumed by the first sub-step
+        const prevZ = stateRef.current.position[2]
         stateRef.current = flightStep(stateRef.current, stepActions, cfg, cfg.fixedDt)
+        const s2 = stateRef.current
+
+        // Apply the boost as a decaying OVERSPEED on top of the eased base speed:
+        // the flight model pulls `speed` back toward its target, so a raw one-shot
+        // add would vanish. Adding extra +Z displacement here survives that easing
+        // and decays smoothly over ~boostDuration. Done BEFORE ring detection so
+        // the crossing test covers the full sub-step travel (flight + boost) with
+        // no skipped sliver.
+        if (boostRef.current > BOOST.cutoff) {
+          const extra = boostRef.current * cfg.fixedDt
+          s2.position[2] += extra
+          s2.distance += extra
+          const rate = BOOST.decaySharpness / Math.max(BOOST.minDurationSec, boostDurationRef.current)
+          boostRef.current *= Math.exp(-rate * cfg.fixedDt)
+        } else {
+          boostRef.current = 0
+        }
+
+        // Ring fly-through detection on the AUTHORITATIVE state over the whole
+        // sub-step [prevZ, currZ]. Only a clean pass through the hole boosts (a
+        // 'miss' = sailed past outside the ring = no effect). Each ring fires once
+        // (guarded by the passed set); the boost it grants starts next sub-step.
+        for (let i = 0; i < rings.length; i++) {
+          const ring = rings[i]
+          if (passedRingsRef.current.has(ring.id)) continue
+          const res = ringCrossing(prevZ, s2.position[2], s2.position[0], s2.position[1], ring, duckRadius)
+          if (res === 'pass') {
+            passedRingsRef.current.add(ring.id)
+            ringPulseAtRef.current.set(ring.id, performance.now())
+            // Refresh (not stack) the overspeed so back-to-back rings stay snappy.
+            boostRef.current = Math.max(boostRef.current, boostSpeedRef.current)
+            ringsChanged = true
+          }
+        }
+
         accRef.current -= cfg.fixedDt
       }
+
+      // Push newly-passed rings to React state so MapView recolors + flashes.
+      if (ringsChanged) onRingsChanged()
 
       // Finish line: clamp at the end of the finite track and freeze the run once.
       const end = mapRef.current.length
@@ -138,6 +188,8 @@ interface HudSnapshot {
   s: DuckState
   a: DuckActions
   clip: string
+  boost: number
+  ringsPassed: number
 }
 
 /** Live readout. Snapshots refs on a timer (in an effect) so render never reads a ref. */
@@ -145,25 +197,37 @@ function Hud({
   stateRef,
   actionsRef,
   clipRef,
+  boostRef,
+  passedRingsRef,
 }: {
   stateRef: React.RefObject<DuckState>
   actionsRef: React.RefObject<DuckActions>
   clipRef: React.RefObject<string>
+  boostRef: React.RefObject<number>
+  passedRingsRef: React.RefObject<Set<number>>
 }) {
   const [snap, setSnap] = useState<HudSnapshot>(() => ({
     s: createFlightState(),
     a: makeIdleActions(),
     clip: 'idle_1',
+    boost: 0,
+    ringsPassed: 0,
   }))
 
   useEffect(() => {
     const id = setInterval(() => {
-      setSnap({ s: stateRef.current, a: actionsRef.current, clip: clipRef.current })
+      setSnap({
+        s: stateRef.current,
+        a: actionsRef.current,
+        clip: clipRef.current,
+        boost: boostRef.current,
+        ringsPassed: passedRingsRef.current.size,
+      })
     }, 100)
     return () => clearInterval(id)
-  }, [stateRef, actionsRef, clipRef])
+  }, [stateRef, actionsRef, clipRef, boostRef, passedRingsRef])
 
-  const { s, a, clip } = snap
+  const { s, a, clip, boost, ringsPassed } = snap
   const row = (label: string, value: string) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
       <span style={{ opacity: 0.6 }}>{label}</span>
@@ -188,7 +252,13 @@ function Hud({
     >
       <div style={{ opacity: 0.8, marginBottom: 6, fontWeight: 600 }}>STATE</div>
       {row('clip', clip || '-')}
-      {row('speed', `${s.speed.toFixed(1)} u/s`)}
+      {/* Ground velocity = eased cruise (s.speed) + the decaying ring boost. The
+          boost is a separate term applied straight to position, so we add it here
+          to show the TRUE speed; the cruise + bonus breakdown is below. */}
+      {row('speed', `${(s.speed + boost).toFixed(1)} u/s`)}
+      {row('· cruise', `${s.speed.toFixed(1)} u/s`)}
+      {row('· boost', `+${boost.toFixed(1)} u/s`)}
+      {row('rings', `${ringsPassed}`)}
       {row('altitude', `${s.position[1].toFixed(1)} m`)}
       {row('vert vel', `${s.verticalVel.toFixed(1)} u/s`)}
       {row('lateral X', `${s.position[0].toFixed(1)} m`)}
@@ -214,6 +284,22 @@ export function PersonAPlayground() {
   const clipRef = useRef<string>('idle_1')
   const finishedRef = useRef(false)
 
+  // Ring state. The refs are the authoritative copy the sim loop reads/writes each
+  // sub-step; the React state mirrors them so MapView recolors + flashes (updated
+  // only on the frames a new ring is passed, never per render).
+  const passedRingsRef = useRef<Set<number>>(new Set())
+  const ringPulseAtRef = useRef<Map<number, number>>(new Map())
+  const boostRef = useRef(0) // current decaying overspeed (u/s)
+  const boostSpeedRef = useRef<number>(BOOST.speed) // mirror of the leva slider
+  const boostDurationRef = useRef<number>(BOOST.durationSec) // mirror of the leva slider
+  const [passedRingIds, setPassedRingIds] = useState<Set<number>>(() => new Set())
+  const [ringPulseAt, setRingPulseAt] = useState<Map<number, number>>(() => new Map())
+  // Snapshot the ring refs into state (called from the sim loop on a new pass).
+  const syncRings = useCallback(() => {
+    setPassedRingIds(new Set(passedRingsRef.current))
+    setRingPulseAt(new Map(ringPulseAtRef.current))
+  }, [])
+
   // Debug toggle: off by default so mode=a is a clean, playable game. On reveals
   // the whole leva panel. Plain React state (not a ref) so the Leva hidden prop
   // and the button label re-render.
@@ -229,7 +315,12 @@ export function PersonAPlayground() {
   const resetState = useCallback(() => {
     stateRef.current = createFlightState()
     finishedRef.current = false
+    passedRingsRef.current = new Set()
+    ringPulseAtRef.current = new Map()
+    boostRef.current = 0
     setFinished(false)
+    setPassedRingIds(new Set())
+    setRingPulseAt(new Map())
   }, [])
 
   // Keyboard (Space = flap, A/D = lean, W = dive). Always on in the playground.
@@ -316,7 +407,16 @@ export function PersonAPlayground() {
     }),
   })
 
+  // Slider defaults + ranges come from playgroundConfig (BOOST_SLIDERS); see that
+  // file for what speed / duration / decay actually do.
+  const boost = useControls('Boost (rings)', { ...BOOST_SLIDERS })
+
   // Mirror leva values into the refs the sim loop reads (in effects, not render).
+  useEffect(() => {
+    boostSpeedRef.current = boost.boostSpeed
+    boostDurationRef.current = boost.boostDuration
+  }, [boost.boostSpeed, boost.boostDuration])
+
   useEffect(() => {
     actionsRef.current = {
       flap: actions.flap,
@@ -367,7 +467,7 @@ export function PersonAPlayground() {
         <ambientLight intensity={0.6} />
         <hemisphereLight color="#ffffff" groundColor="#c8d2dc" intensity={0.5} />
         <directionalLight position={[50, 80, 20]} intensity={1.2} castShadow />
-        <MapView map={map} passedRingIds={EMPTY_RING_IDS} />
+        <MapView map={map} passedRingIds={passedRingIds} ringPulseAt={ringPulseAt} />
         <PlaygroundRig
           stateRef={stateRef}
           actionsRef={actionsRef}
@@ -382,10 +482,22 @@ export function PersonAPlayground() {
           mapRef={mapRef}
           finishedRef={finishedRef}
           onFinish={onFinish}
+          passedRingsRef={passedRingsRef}
+          ringPulseAtRef={ringPulseAtRef}
+          boostRef={boostRef}
+          boostSpeedRef={boostSpeedRef}
+          boostDurationRef={boostDurationRef}
+          onRingsChanged={syncRings}
         />
         <FollowCamera stateRef={stateRef} cfg={cam} />
       </Canvas>
-      <Hud stateRef={stateRef} actionsRef={mergedActionsRef} clipRef={clipRef} />
+      <Hud
+        stateRef={stateRef}
+        actionsRef={mergedActionsRef}
+        clipRef={clipRef}
+        boostRef={boostRef}
+        passedRingsRef={passedRingsRef}
+      />
       <ControlsHint />
       <DebugToggle debug={debug} onToggle={() => setDebug((d) => !d)} />
       {finished && <FinishOverlay stateRef={stateRef} onReset={resetState} />}
