@@ -4,8 +4,8 @@
 
 import { type CSSProperties, useEffect, useState } from 'react'
 import type { PlayerView, RaceSnapshot } from '../../net/types'
-import { COLORS, FONT_DISPLAY, FONT_MONO, KeyCap, cutPath, formatTime } from '../ui'
-import { hudPanel, hudRowStyle } from './parts'
+import { COLORS, FONT_DISPLAY, KeyCap, cutPath, formatTime } from '../ui'
+import { hudPanel } from './parts'
 
 export function RaceHud({
   race,
@@ -45,7 +45,7 @@ export function RaceHud({
           label="RINGS"
           value={`${self?.ringsPassed ?? 0}`}
           suffix={`/ ${ringCount}`}
-          accent={COLORS.accent}
+          accent={COLORS.gold}
         />
         <BigStat
           label="POSITION"
@@ -56,7 +56,7 @@ export function RaceHud({
       </div>
 
       <div style={{ ...hudPanel, top: 14, right: 14, minWidth: 220, padding: '14px 16px' }}>
-        <div style={{ color: COLORS.dim, marginBottom: 10, fontSize: '0.8rem', letterSpacing: 1.5, fontWeight: 700 }}>
+        <div style={{ color: COLORS.hudDim, marginBottom: 10, fontSize: '0.8rem', letterSpacing: 1.5, fontWeight: 700 }}>
           LEADERBOARD
         </div>
         {ranked.map((p) => {
@@ -77,12 +77,12 @@ export function RaceHud({
                 fontWeight: me ? 800 : 600,
               }}
             >
-              <span style={{ color: me ? COLORS.gold : COLORS.text }}>
+              <span style={{ color: me ? COLORS.gold : COLORS.hudText }}>
                 <span style={{ opacity: 0.6, marginRight: 8 }}>{p.rank || '–'}</span>
                 {p.name}
                 {me ? ' (you)' : ''}
               </span>
-              <span style={{ color: p.finished ? COLORS.good : COLORS.dim, fontVariantNumeric: 'tabular-nums' }}>
+              <span style={{ color: p.finished ? COLORS.gold : COLORS.hudText, fontVariantNumeric: 'tabular-nums' }}>
                 {p.finished ? '🏁' : `${p.ringsPassed}`}
               </span>
             </div>
@@ -100,7 +100,7 @@ function BigStat({
   label,
   value,
   suffix,
-  accent = COLORS.text,
+  accent = COLORS.hudText,
 }: {
   label: string
   value: string
@@ -120,13 +120,13 @@ function BigStat({
         gap: 2,
       }}
     >
-      <span style={{ color: COLORS.dim, fontSize: '0.72rem', letterSpacing: 2, fontWeight: 700 }}>
+      <span style={{ color: COLORS.hudDim, fontSize: '0.72rem', letterSpacing: 2, fontWeight: 700 }}>
         {label}
       </span>
       <span style={bigValueStyle(accent)}>
         {value}
         {suffix && (
-          <span style={{ fontSize: '1.1rem', color: COLORS.dim, fontWeight: 600, marginLeft: 4 }}>
+          <span style={{ fontSize: '1.1rem', color: COLORS.hudDim, fontWeight: 600, marginLeft: 4 }}>
             {suffix}
           </span>
         )}

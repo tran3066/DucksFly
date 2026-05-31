@@ -121,7 +121,7 @@ export function Minimap({
               style={{
                 fontSize: 9,
                 lineHeight: 1,
-                color: m.finished ? COLORS.faint : COLORS.text,
+                color: m.finished ? COLORS.faint : COLORS.hudText,
                 textShadow: '0 1px 2px rgba(0,0,0,0.8)',
                 maxWidth: 46,
                 overflow: 'hidden',
