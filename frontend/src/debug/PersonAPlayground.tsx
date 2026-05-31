@@ -396,9 +396,17 @@ export function PersonAPlayground() {
     }),
   })
 
-  // Slider defaults + ranges come from playgroundConfig (BOOST_SLIDERS); see that
-  // file for what speed / duration / decay actually do.
-  const boost = useControls('Boost (rings)', { ...BOOST_SLIDERS })
+  // Slider defaults + ranges come from playgroundConfig (BOOST_SLIDERS). leva only
+  // reads a control's `value` once (on first mount) and its store can survive Vite
+  // HMR, so editing the config would otherwise NOT show up. Passing the schema as a
+  // function + a deps array of the config values makes leva re-seed the sliders
+  // whenever those change, so editing playgroundConfig.ts updates the panel live.
+  // NOTE: the function form returns a [values, set] tuple, hence the destructure.
+  const [boost] = useControls(
+    'Boost (rings)',
+    () => ({ ...BOOST_SLIDERS }),
+    [BOOST.speed, BOOST.durationSec],
+  )
 
   // Mirror leva values into the refs the sim loop reads (in effects, not render).
   useEffect(() => {
