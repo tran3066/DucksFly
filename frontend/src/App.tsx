@@ -1,17 +1,16 @@
+import { DuckPreview } from './world/DuckPreview'
+import { PhysicsSandbox } from './test/PhysicsSandbox'
+import { MultiplayerTest } from './test/MultiplayerTest'
+
+// Temporary view switch so each person's harness coexists. Pick via URL:
+//   ?view=map          -> environment / map generation sandbox (Person B)
+//   ?view=multiplayer  -> server sync test harness (open in several tabs)
+//   (default)          -> duck preview (Person A)
 function App() {
-  return (
-    <div style={{ fontFamily: 'system-ui, sans-serif', padding: '40px', lineHeight: 1.6 }}>
-      <h1>🦆 DucksFly</h1>
-      <p>The game frontend lives here (work in progress).</p>
-      <p>
-        To test multiplayer against the server, open{' '}
-        <a href="/test.html">
-          <code>/test.html</code>
-        </a>{' '}
-        in a few browser tabs.
-      </p>
-    </div>
-  )
+  const view = new URLSearchParams(window.location.search).get('view')
+  if (view === 'map') return <PhysicsSandbox />
+  if (view === 'multiplayer') return <MultiplayerTest />
+  return <DuckPreview />
 }
 
 export default App

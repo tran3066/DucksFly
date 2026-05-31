@@ -1,8 +1,8 @@
 import * as THREE from 'three'
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js'
 
-// Sits next to the model so the asset is self-contained. Move into src/ if you
-// prefer; just fix the fetch path to animations.json below.
+// Clip frame-ranges live next to this loader. The binary assets (FBX + PNGs)
+// stay in /public/models/duck and are fetched by URL (see BASE below).
 import clipData from './animations.json'
 
 const BASE = '/models/duck'
@@ -27,7 +27,7 @@ export interface LoadedDuck {
   update: (dt: number) => void
 }
 
-let cachedTextures: Partial<Record<DuckVariant, THREE.Texture>> = {}
+const cachedTextures: Partial<Record<DuckVariant, THREE.Texture>> = {}
 
 function loadTexture(variant: DuckVariant): THREE.Texture {
   if (cachedTextures[variant]) return cachedTextures[variant]!
