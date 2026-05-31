@@ -15,6 +15,7 @@ import { buildMap, ringCrossing, DEFAULT_MAP_CONFIG, type MapDef } from '../map'
 import { DuckModel } from './DuckModel';
 import { MapView } from './MapView';
 import { SimpleSky } from '../world/SimpleSky';
+import { WorldLighting } from '../world/WorldLighting';
 
 const MAX_FRAME_DT = 0.1; // clamp to avoid spiral-of-death after a stall
 
@@ -311,8 +312,7 @@ export function PhysicsSandbox() {
         <Suspense fallback={null}>
           <SimpleSky map={map} />
         </Suspense>
-        <ambientLight intensity={0.6} />
-        <directionalLight position={[50, 80, 20]} intensity={1.2} castShadow />
+        <WorldLighting preset="day" />
         <MapView map={map} passedRingIds={passedRef.current} />
         <DuckRig
           stateRef={stateRef}

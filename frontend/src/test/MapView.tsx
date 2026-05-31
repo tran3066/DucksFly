@@ -3,6 +3,7 @@ import { Text } from '@react-three/drei';
 import { DoubleSide } from 'three';
 import type { MapDef, RingDef } from '../map';
 import { Scenery } from '../world/Scenery';
+import { GroundPlane } from '../world/GroundPlane';
 
 /**
  * Placeholder environment renderer for the generation test run. Deliberately
@@ -25,11 +26,8 @@ export function MapView({
 
   return (
     <group>
-      {/* Ground plane, widened to cover the scenery bands either side. */}
-      <mesh position={[0, map.floorY, midZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[groundHalfX * 2, map.length]} />
-        <meshStandardMaterial color="#2f5d3a" />
-      </mesh>
+      {/* Ground plane (tiling grass texture), widened to cover the scenery bands. */}
+      <GroundPlane width={groundHalfX * 2} length={map.length} y={map.floorY} midZ={midZ} />
 
       {/* Lateral bounce walls at x = +/- halfWidth. Translucent (with depthWrite
           off to avoid alpha-sort flicker) so the flanking forest reads through
