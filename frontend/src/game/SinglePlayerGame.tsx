@@ -20,6 +20,7 @@ import { FLAP_ANIM_SPEED } from './gestureConfig'
 import { FlightScene } from './FlightScene'
 import type { FlightRigProps } from './FlightRig'
 import { CrashFlash } from './CrashFlash'
+import { SixSevenOverlay } from './SixSevenOverlay'
 import { ControlModeToggle, type ControlMode } from './ModeChooser'
 import { useCalibrationStore } from '../input/calibration'
 import { Overlay, Panel, Button, KeyCap, formatTime, COLORS, FONT, MONO, UI_KEYFRAMES } from './ui'
@@ -75,6 +76,10 @@ export function SinglePlayerGame({
   }, [])
   const [crashAt, setCrashAt] = useState(0)
   const onCrash = useCallback(() => setCrashAt(performance.now()), [])
+  // "6-7" gesture pop: a counter the rig bumps on each detection; the overlay
+  // replays its animation when it changes.
+  const [sixSevenCount, setSixSevenCount] = useState(0)
+  const onSixSeven = useCallback(() => setSixSevenCount((n) => n + 1), [])
 
   const fireImpulse = useCallback(() => {
     impulseRef.current = true
@@ -235,6 +240,7 @@ export function SinglePlayerGame({
     boostDurationRef,
     onRingsChanged: syncRings,
     onCrash,
+    onSixSeven,
   }
 
   return (
@@ -265,6 +271,7 @@ export function SinglePlayerGame({
       />
       {onExit && <ExitButton onExit={onExit} />}
       <CrashFlash at={crashAt} />
+      <SixSevenOverlay trigger={sixSevenCount} />
       {finished && finishStats && (
         <FinishOverlay stats={finishStats} onReset={resetState} onExit={onExit} />
       )}
