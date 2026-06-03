@@ -7,18 +7,17 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Leva, useControls, button, folder } from 'leva'
-import { Group } from 'three'
 import type { DuckActions, DuckState } from '../physics'
 import { makeIdleActions } from '../shared/types/duckActions'
-import { useKeyboardControls } from '../input/keyboard'
 import { buildMap, DEFAULT_MAP_CONFIG, type MapDef } from '../map'
 import { DEFAULT_FOLLOW } from '../avatar/followConfig'
 import { DEFAULT_ANIM_MAP, type AnimMapConfig } from '../avatar/animationMap'
-import { createFlightState, DEFAULT_FLIGHT, type FlightConfig } from './flight'
+import { createFlightState, DEFAULT_FLIGHT } from './flight'
 import { BOOST, BOOST_SLIDERS } from './gameConfig'
 import { FLAP_ANIM_SPEED } from './gestureConfig'
 import { FlightScene } from './FlightScene'
 import type { FlightRigProps } from './FlightRig'
+import { useFlightSession } from './useFlightSession'
 import { CrashFlash } from './CrashFlash'
 import { SixSevenOverlay } from './SixSevenOverlay'
 import { startMusic, stopMusic, playFinish } from './sfx'
@@ -59,27 +58,29 @@ export function SinglePlayerGame({
     startMusic()
     return () => stopMusic()
   }, [])
-  const stateRef = useRef<DuckState>(createFlightState())
-  const actionsRef = useRef<DuckActions>({ ...makeIdleActions(), confidence: 1 }) // slider baseline
-  const mergedActionsRef = useRef<DuckActions>(makeIdleActions()) // sliders + keyboard (drives anim + HUD)
-  const cfgRef = useRef<FlightConfig>({ ...DEFAULT_FLIGHT })
-  const impulseRef = useRef(false)
-  const duckGroupRef = useRef<Group | null>(null)
-  const clipRef = useRef<string>('idle_1')
-  const finishedRef = useRef(false)
+  // Shared flight-session bundle (refs + ring-sync state + reset). SP spawns at origin.
+  const {
+    stateRef,
+    actionsRef,
+    mergedActionsRef,
+    cfgRef,
+    impulseRef,
+    duckGroupRef,
+    clipRef,
+    finishedRef,
+    passedRingsRef,
+    ringPulseAtRef,
+    boostRef,
+    boostSpeedRef,
+    boostDurationRef,
+    passedRingIds,
+    ringPulseAt,
+    syncRings,
+    fireImpulse,
+    keyRef,
+    reset,
+  } = useFlightSession({ makeInitialState: createFlightState })
   const runningRef = useRef(true) // single-player always simulates (freeze handled via finishedRef)
-
-  const passedRingsRef = useRef<Set<number>>(new Set())
-  const ringPulseAtRef = useRef<Map<number, number>>(new Map())
-  const boostRef = useRef(0)
-  const boostSpeedRef = useRef<number>(BOOST.speed)
-  const boostDurationRef = useRef<number>(BOOST.durationSec)
-  const [passedRingIds, setPassedRingIds] = useState<Set<number>>(() => new Set())
-  const [ringPulseAt, setRingPulseAt] = useState<Map<number, number>>(() => new Map())
-  const syncRings = useCallback(() => {
-    setPassedRingIds(new Set(passedRingsRef.current))
-    setRingPulseAt(new Map(ringPulseAtRef.current))
-  }, [])
 
   const [debug, setDebug] = useState(false)
   const [finished, setFinished] = useState(false)
@@ -95,7 +96,7 @@ export function SinglePlayerGame({
     setFinished(true)
     stopMusic() // race over: stop the loop at the finish line
     playFinish() // ...and celebrate the crossing
-  }, [])
+  }, [passedRingsRef, stateRef])
   const [crashAt, setCrashAt] = useState(0)
   const onCrash = useCallback(() => setCrashAt(performance.now()), [])
   // "6-7" gesture pop: a counter the rig bumps on each detection; the overlay
@@ -103,24 +104,13 @@ export function SinglePlayerGame({
   const [sixSevenCount, setSixSevenCount] = useState(0)
   const onSixSeven = useCallback(() => setSixSevenCount((n) => n + 1), [])
 
-  const fireImpulse = useCallback(() => {
-    impulseRef.current = true
-  }, [])
   const resetState = useCallback(() => {
-    stateRef.current = createFlightState()
-    finishedRef.current = false
-    passedRingsRef.current = new Set()
-    ringPulseAtRef.current = new Map()
-    boostRef.current = 0
+    reset() // shared: state/finish/rings/boost + ring-sync mirrors
     runStartRef.current = performance.now()
     setFinished(false)
     setFinishStats(null)
-    setPassedRingIds(new Set())
-    setRingPulseAt(new Map())
     startMusic() // (re)start the loop for the fresh run / new seed
-  }, [])
-
-  const keyRef = useKeyboardControls(true, fireImpulse)
+  }, [reset])
 
   const world = useControls('World', {
     seed: { value: 1337, min: 0, max: 99999, step: 1 },
@@ -194,7 +184,7 @@ export function SinglePlayerGame({
   useEffect(() => {
     boostSpeedRef.current = boost.boostSpeed
     boostDurationRef.current = boost.boostDuration
-  }, [boost.boostSpeed, boost.boostDuration])
+  }, [boost.boostSpeed, boost.boostDuration, boostSpeedRef, boostDurationRef])
 
   useEffect(() => {
     actionsRef.current = {
@@ -214,11 +204,12 @@ export function SinglePlayerGame({
     actions.quack,
     actions.egg67,
     actions.confidence,
+    actionsRef,
   ])
 
   useEffect(() => {
     cfgRef.current = { ...DEFAULT_FLIGHT, ...cfg }
-  }, [cfg])
+  }, [cfg, cfgRef])
 
   const animCfg: AnimMapConfig = {
     ...DEFAULT_ANIM_MAP,

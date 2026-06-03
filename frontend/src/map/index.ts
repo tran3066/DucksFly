@@ -2,5 +2,9 @@ export type { MapDef, RingDef, Checkpoint, SceneryItem, SceneryKind, MapConfig }
 export { DEFAULT_MAP_CONFIG } from './config';
 export { makeRng, randRange, deriveSeed } from './rng';
 export { buildMap } from './buildMap';
+export { buildChunk, CHUNK_LENGTH, ID_STRIDE } from './buildChunk';
+export type { ChunkData } from './buildChunk';
+export { createInfiniteMap, difficultyFor } from './infiniteMap';
+export type { InfiniteMap } from './infiniteMap';
 export { ringCrossing, ringRimHit, treeHit, treeTrunk, RING_TUBE } from './collide';
 export type { TreeTrunk } from './collide';

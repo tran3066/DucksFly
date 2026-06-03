@@ -10,19 +10,17 @@
 // only owns the scene + sim wiring and hands the live snapshot to `<RaceScreens>`.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Euler, Group, Quaternion } from 'three'
-import type { DuckActions, DuckState } from '../physics'
-import { makeIdleActions } from '../shared/types/duckActions'
-import { useKeyboardControls } from '../input/keyboard'
+import { Euler, Quaternion } from 'three'
+import type { DuckState } from '../physics'
 import { buildMap, type MapDef } from '../map'
 import { DEFAULT_FOLLOW } from '../avatar/followConfig'
 import { DEFAULT_ANIM_MAP } from '../avatar/animationMap'
 import type { DuckVariant } from '../avatar/loadDuck'
-import { createFlightState, DEFAULT_FLIGHT, type FlightConfig } from './flight'
-import { BOOST } from './gameConfig'
+import { createFlightState } from './flight'
 import { FLAP_ANIM_SPEED } from './gestureConfig'
 import { FlightScene } from './FlightScene'
 import type { FlightRigProps } from './FlightRig'
+import { useFlightSession } from './useFlightSession'
 import { CrashFlash } from './CrashFlash'
 import { startMusic, stopMusic, playFinish } from './sfx'
 import { Minimap } from './Minimap'
@@ -75,44 +73,41 @@ export function MultiplayerGame({
     return () => useCalibrationStore.getState().setRecalibrateAllowed(true)
   }, [racing])
 
-  const stateRef = useRef<DuckState>(spawnState(0))
-  const actionsRef = useRef<DuckActions>({ ...makeIdleActions(), confidence: 1 })
-  const mergedActionsRef = useRef<DuckActions>(makeIdleActions())
-  const cfgRef = useRef<FlightConfig>({ ...DEFAULT_FLIGHT })
-  const impulseRef = useRef(false)
-  const duckGroupRef = useRef<Group | null>(null)
-  const clipRef = useRef<string>('idle_1')
+  // Shared flight-session bundle (refs + ring-sync state + reset). MP spawns at a slot;
+  // the real spawn index is only known once a race starts, so reset() takes the state then.
+  const {
+    stateRef,
+    actionsRef,
+    mergedActionsRef,
+    cfgRef,
+    impulseRef,
+    duckGroupRef,
+    clipRef,
+    finishedRef,
+    passedRingsRef,
+    ringPulseAtRef,
+    boostRef,
+    boostSpeedRef,
+    boostDurationRef,
+    passedRingIds,
+    ringPulseAt,
+    syncRings,
+    keyRef,
+    reset,
+  } = useFlightSession({ makeInitialState: () => spawnState(0) })
 
-  // Finish is client-detected (FlightRig freezes the duck at the finish line). `finishedRef`
-  // is the per-frame freeze flag the rig owns; `finishedStreamRef` is what we fold into the
-  // pose stream; `localFinished` drives the wait screen immediately (before the server echoes).
-  const finishedRef = useRef(false)
+  // MP-specific finish plumbing. `finishedRef` (from the session) is the per-frame freeze
+  // flag the rig owns; `finishedStreamRef` is what we fold into the pose stream; `localFinished`
+  // drives the wait screen immediately (before the server echoes).
   const finishedStreamRef = useRef(false)
   const [localFinished, setLocalFinished] = useState(false)
   // Tree/ring crashes this run (client-side respawns), reported for the leaderboard.
   const crashCountRef = useRef(0)
 
-  const passedRingsRef = useRef<Set<number>>(new Set())
-  const ringPulseAtRef = useRef<Map<number, number>>(new Map())
-  const boostRef = useRef(0)
-  const boostSpeedRef = useRef<number>(BOOST.speed)
-  const boostDurationRef = useRef<number>(BOOST.durationSec)
-  const [passedRingIds, setPassedRingIds] = useState<Set<number>>(() => new Set())
-  const [ringPulseAt, setRingPulseAt] = useState<Map<number, number>>(() => new Map())
-  const syncRings = () => {
-    setPassedRingIds(new Set(passedRingsRef.current))
-    setRingPulseAt(new Map(ringPulseAtRef.current))
-  }
-
   // Sim runs while racing; once we cross the line the rig freezes via `finishedRef`, so the
   // duck never flies on into the void.
   const runningRef = useRef(false)
   runningRef.current = race.phase === 'racing'
-
-  const fireImpulse = useRef(() => {
-    impulseRef.current = true
-  }).current
-  const keyRef = useKeyboardControls(true, fireImpulse)
 
   const self = race.players.find((p) => p.id === race.sessionId)
   const variant: DuckVariant = self?.duckVariant ?? 'male'
@@ -154,17 +149,11 @@ export function MultiplayerGame({
   useEffect(() => {
     if (race.phase !== 'racing') return
     const index = Math.max(0, playersRef.current.findIndex((p) => p.id === sessionIdRef.current))
-    stateRef.current = spawnState(index)
-    finishedRef.current = false
+    reset(spawnState(index)) // shared: state/finish/rings/boost + ring-sync mirrors
     finishedStreamRef.current = false
     crashCountRef.current = 0
-    passedRingsRef.current = new Set()
-    ringPulseAtRef.current = new Map()
-    boostRef.current = 0
     setLocalFinished(false)
-    setPassedRingIds(new Set())
-    setRingPulseAt(new Map())
-  }, [race.phase])
+  }, [race.phase, reset])
 
   // Stream our authoritative pose + progress to the server while racing. The progress numbers
   // (rings, crashes, finished) ride along so we don't need separate messages.
@@ -182,7 +171,7 @@ export function MultiplayerGame({
       })
     }, 1000 / POSITION_SEND_HZ)
     return () => window.clearInterval(id)
-  }, [race.phase])
+  }, [race.phase, passedRingsRef, stateRef])
 
   // Local red flash + crash tally when we hit a tree / ring rim (client-local respawn).
   const [crashAt, setCrashAt] = useState(0)

@@ -5,6 +5,7 @@
 import { useState } from 'react'
 import {
   BrandMark,
+  Button,
   COLORS,
   FONT_BODY,
   FONT_DISPLAY,
@@ -13,16 +14,24 @@ import {
   UI_KEYFRAMES,
   cutPath,
 } from './ui'
+import { StatsScreen } from './StatsScreen'
 
 export type GameMode = 'single' | 'multi'
 
 export function StartMenu({ onPick }: { onPick: (mode: GameMode) => void }) {
   const [hover, setHover] = useState<GameMode | null>(null)
+  const [showStats, setShowStats] = useState(false)
 
   return (
     <div style={root}>
       <style>{UI_KEYFRAMES}</style>
       <SkyBackdrop />
+
+      <div style={topBar}>
+        <Button variant="ghost" onClick={() => setShowStats(true)}>
+          📊 Lifetime stats
+        </Button>
+      </div>
 
       <div style={content}>
         <div style={{ textAlign: 'center', animation: 'ducksfly-rise 0.5s both' }}>
@@ -71,6 +80,8 @@ export function StartMenu({ onPick }: { onPick: (mode: GameMode) => void }) {
           </span>
         </div>
       </div>
+
+      {showStats && <StatsScreen onClose={() => setShowStats(false)} />}
     </div>
   )
 }
@@ -159,6 +170,13 @@ const root: React.CSSProperties = {
   justifyContent: 'center',
   fontFamily: FONT_BODY,
   color: COLORS.slate,
+}
+
+const topBar: React.CSSProperties = {
+  position: 'absolute',
+  top: 18,
+  right: 18,
+  zIndex: 2,
 }
 
 const content: React.CSSProperties = {
