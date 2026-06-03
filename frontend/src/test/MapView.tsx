@@ -36,6 +36,7 @@ export function MapView({
   const BACK_WALL_Z = map.length + 290; // mountains wrap across here
   const END_PAD = 700; // ground runs well past the back wall (mountains stand on it)
   const groundLength = map.length + END_PAD;
+  const hasFinish = map.checkpoints.some((cp) => cp.isFinish);
 
   return (
     <group>
@@ -88,7 +89,7 @@ export function MapView({
       {/* Real seed-generated nature-pack scenery, instanced for performance. */}
       <Suspense fallback={null}>
         <Scenery map={map} />
-        <StageEnd map={map} />
+        {hasFinish && <StageEnd map={map} />}
       </Suspense>
     </group>
   );

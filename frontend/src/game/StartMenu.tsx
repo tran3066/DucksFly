@@ -16,11 +16,76 @@ import {
 } from './ui'
 import { StatsScreen } from './StatsScreen'
 
-export type GameMode = 'single' | 'multi'
+export type GameMode = 'race-setup' | 'race' | 'infinite' | 'multi'
 
 export function StartMenu({ onPick }: { onPick: (mode: GameMode) => void }) {
   const [hover, setHover] = useState<GameMode | null>(null)
+  const [hoverSolo, setHoverSolo] = useState(false)
   const [showStats, setShowStats] = useState(false)
+  const [view, setView] = useState<'main' | 'solo'>('main')
+
+  if (view === 'solo') {
+    return (
+      <div style={root}>
+        <style>{UI_KEYFRAMES}</style>
+        <SkyBackdrop />
+        <div style={topBar}>
+          <Button variant="ghost" onClick={() => setShowStats(true)}>
+            📊 Lifetime stats
+          </Button>
+        </div>
+        <div style={content}>
+          <div style={{ textAlign: 'center', animation: 'ducksfly-rise 0.5s both' }}>
+            <div
+              style={{
+                fontFamily: FONT_DISPLAY,
+                fontWeight: 700,
+                fontSize: '2rem',
+                color: '#fff',
+                textShadow: '0 2px 8px rgba(20,40,60,0.4)',
+                marginBottom: 8,
+              }}
+            >
+              Single Player
+            </div>
+            <div style={tagline}>Race a set distance, or fly until you crash.</div>
+          </div>
+          <div style={cardRow}>
+            <ModeCard
+              icon="🏁"
+              label="Race"
+              blurb="Pick your distance (1 km – 50 km). Chase a fast time and clean rings."
+              accent={COLORS.cyanDeep}
+              iconBg="rgba(41,194,232,0.16)"
+              delay={0.16}
+              active={hover === 'race-setup'}
+              onEnter={() => setHover('race-setup')}
+              onLeave={() => setHover(null)}
+              onClick={() => onPick('race-setup')}
+            />
+            <ModeCard
+              icon="∞"
+              label="Infinite Run"
+              blurb="The course never ends. Fly as far as you can — one crash ends the run."
+              accent={COLORS.orangeDeep}
+              iconBg="rgba(255,138,31,0.16)"
+              delay={0.24}
+              active={hover === 'infinite'}
+              onEnter={() => setHover('infinite')}
+              onLeave={() => setHover(null)}
+              onClick={() => onPick('infinite')}
+            />
+          </div>
+          <div style={{ animation: 'ducksfly-rise 0.5s 0.32s both' }}>
+            <Button variant="ghost" onClick={() => setView('main')}>
+              ← Back to menu
+            </Button>
+          </div>
+        </div>
+        {showStats && <StatsScreen onClose={() => setShowStats(false)} />}
+      </div>
+    )
+  }
 
   return (
     <div style={root}>
@@ -47,10 +112,10 @@ export function StartMenu({ onPick }: { onPick: (mode: GameMode) => void }) {
             accent={COLORS.cyanDeep}
             iconBg="rgba(41,194,232,0.16)"
             delay={0.16}
-            active={hover === 'single'}
-            onEnter={() => setHover('single')}
-            onLeave={() => setHover(null)}
-            onClick={() => onPick('single')}
+            active={hoverSolo}
+            onEnter={() => setHoverSolo(true)}
+            onLeave={() => setHoverSolo(false)}
+            onClick={() => setView('solo')}
           />
           <ModeCard
             icon="🌐"

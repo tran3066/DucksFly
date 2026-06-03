@@ -43,6 +43,8 @@ export function useFlightSession({ makeInitialState }: UseFlightSessionOptions) 
   const duckGroupRef = useRef<Group | null>(null)
   const clipRef = useRef<string>('idle_1')
   const finishedRef = useRef(false)
+  const flySRef = useRef(0)
+  const usedKeyboardRef = useRef(false)
 
   // Ring progress: the rig mutates the refs every frame; the React mirrors below
   // drive the rendered ring visuals and are refreshed via `syncRings`.
@@ -68,6 +70,8 @@ export function useFlightSession({ makeInitialState }: UseFlightSessionOptions) 
   const reset = useCallback((initialState?: DuckState) => {
     stateRef.current = initialState ?? makeInitialStateRef.current()
     finishedRef.current = false
+    flySRef.current = 0
+    usedKeyboardRef.current = false
     passedRingsRef.current = new Set()
     ringPulseAtRef.current = new Map()
     boostRef.current = 0
@@ -84,6 +88,8 @@ export function useFlightSession({ makeInitialState }: UseFlightSessionOptions) 
     duckGroupRef,
     clipRef,
     finishedRef,
+    flySRef,
+    usedKeyboardRef,
     passedRingsRef,
     ringPulseAtRef,
     boostRef,

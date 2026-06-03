@@ -84,6 +84,8 @@ export function MultiplayerGame({
     duckGroupRef,
     clipRef,
     finishedRef,
+    flySRef,
+    usedKeyboardRef,
     passedRingsRef,
     ringPulseAtRef,
     boostRef,
@@ -211,6 +213,8 @@ export function MultiplayerGame({
     runningRef,
     enableFinish: true, // finish line freezes the duck; we report the crossing to the server
     finishedRef,
+    flySRef,
+    usedKeyboardRef,
     onFinish,
     passedRingsRef,
     ringPulseAtRef,

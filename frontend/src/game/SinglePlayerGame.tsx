@@ -9,7 +9,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Leva, useControls, button, folder } from 'leva'
 import type { DuckActions, DuckState } from '../physics'
 import { makeIdleActions } from '../shared/types/duckActions'
+import { getRacePB, type Control } from '../data/flightStore'
 import { buildMap, DEFAULT_MAP_CONFIG, type MapDef } from '../map'
+import { formatRaceDistance } from './raceDistance'
 import { DEFAULT_FOLLOW } from '../avatar/followConfig'
 import { DEFAULT_ANIM_MAP, type AnimMapConfig } from '../avatar/animationMap'
 import { createFlightState, DEFAULT_FLIGHT } from './flight'
@@ -38,10 +40,13 @@ import {
 } from './ui'
 
 export function SinglePlayerGame({
+  targetDist,
   onExit,
   controlMode,
   onSetControlMode,
 }: {
+  /** Course length in meters (solo race). */
+  targetDist: number
   onExit?: () => void
   controlMode: ControlMode
   onSetControlMode: (mode: ControlMode) => void
@@ -68,6 +73,8 @@ export function SinglePlayerGame({
     duckGroupRef,
     clipRef,
     finishedRef,
+    flySRef,
+    usedKeyboardRef,
     passedRingsRef,
     ringPulseAtRef,
     boostRef,
@@ -115,12 +122,15 @@ export function SinglePlayerGame({
   const world = useControls('World', {
     seed: { value: 1337, min: 0, max: 99999, step: 1 },
   })
-  const map = useMemo(() => buildMap(world.seed), [world.seed])
+  const map = useMemo(
+    () => buildMap(world.seed, { ...DEFAULT_MAP_CONFIG, length: targetDist }),
+    [world.seed, targetDist],
+  )
   const mapRef = useRef<MapDef>(map)
   mapRef.current = map
   useEffect(() => {
     resetState()
-  }, [world.seed, resetState])
+  }, [world.seed, targetDist, resetState])
 
   const actions = useControls('Actions (manual)', {
     flap: { value: 0, min: 0, max: 1, step: 0.01 },
@@ -246,6 +256,8 @@ export function SinglePlayerGame({
     runningRef,
     enableFinish: true,
     finishedRef,
+    flySRef,
+    usedKeyboardRef,
     onFinish,
     passedRingsRef,
     ringPulseAtRef,
@@ -294,8 +306,15 @@ export function SinglePlayerGame({
       {onExit && <ExitButton onExit={onExit} />}
       <CrashFlash at={crashAt} />
       <SixSevenOverlay trigger={sixSevenCount} />
+      <RaceDistanceBadge distanceLabel={formatRaceDistance(targetDist)} />
       {finished && finishStats && (
-        <FinishOverlay stats={finishStats} onReset={resetState} onExit={onExit} />
+        <FinishOverlay
+          stats={finishStats}
+          targetDist={targetDist}
+          control={usedKeyboardRef.current ? 'kb' : 'cam'}
+          onReset={resetState}
+          onExit={onExit}
+        />
       )}
     </div>
   )
@@ -504,15 +523,48 @@ function Hud({
   )
 }
 
+function RaceDistanceBadge({ distanceLabel }: { distanceLabel: string }) {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 14,
+        left: 20,
+        padding: '8px 14px',
+        background: 'rgba(10,18,30,0.66)',
+        border: '1px solid rgba(120,150,180,0.18)',
+        borderRadius: 10,
+        backdropFilter: 'blur(6px)',
+        pointerEvents: 'none',
+        fontFamily: MONO,
+        fontSize: '0.82rem',
+        fontWeight: 700,
+        letterSpacing: 1,
+        color: COLORS.hudDim,
+      }}
+    >
+      RACE · <span style={{ color: COLORS.hudText }}>{distanceLabel}</span>
+    </div>
+  )
+}
+
 function FinishOverlay({
   stats,
+  targetDist,
+  control,
   onReset,
   onExit,
 }: {
   stats: { ms: number; rings: number; distance: number }
+  targetDist: number
+  control: Control
   onReset: () => void
   onExit?: () => void
 }) {
+  const pb = getRacePB(targetDist, control)
+  const newTimePb = !pb || stats.ms < pb.bestTimeMs
+  const newRingsPb = !pb || stats.rings > pb.bestRings
+  const newPb = newTimePb || newRingsPb
   const stat = (label: string, value: string, color: string) => (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
       <span style={{ fontFamily: MONO, fontSize: '2.1rem', fontWeight: 700, color, lineHeight: 1 }}>
@@ -548,7 +600,22 @@ function FinishOverlay({
         >
           🏁 <span style={{ color: COLORS.orange }}>Finish!</span>
         </div>
-        <p style={{ color: COLORS.slateDim, margin: '0 0 26px', fontWeight: 500 }}>Nice flying.</p>
+        {newPb && (
+          <p
+            style={{
+              color: COLORS.gold,
+              fontFamily: FONT_DISPLAY,
+              fontWeight: 700,
+              fontSize: '1.15rem',
+              margin: '0 0 8px',
+            }}
+          >
+            ★ New personal best!
+          </p>
+        )}
+        <p style={{ color: COLORS.slateDim, margin: '0 0 26px', fontWeight: 500 }}>
+          {formatRaceDistance(targetDist)} race · Nice flying.
+        </p>
         <div style={{ display: 'flex', gap: 38, justifyContent: 'center', margin: '0 0 28px' }}>
           {stat('TIME', formatTime(stats.ms), COLORS.cyanDeep)}
           {stat('RINGS', String(stats.rings), COLORS.yellowDeep)}

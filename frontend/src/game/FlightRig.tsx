@@ -91,6 +91,15 @@ export interface FlightRigProps {
   /** Fired once each time the "6-7" two-handed gesture is recognized; drives the
    *  on-screen "6 7" pop. Gated so it never fires while the 6-7 sound is playing. */
   onSixSeven?: () => void
+  /** While the sim advances, accumulates clamped frame dt (seconds of fly time).
+   *  Excludes finish-freeze, calibration gate, and MP lobby/countdown. */
+  flySRef?: React.RefObject<number>
+  /** Set true on any frame live keyboard contributes flap/lean/dive (for kb vs cam stats). */
+  usedKeyboardRef?: React.RefObject<boolean>
+  /** When true, tree/ring-rim hits end the run (no respawn, no onCrash). Default off. */
+  crashEndsRun?: boolean
+  /** Fired once when crashEndsRun stops the run. */
+  onGameOver?: () => void
 }
 
 export function FlightRig({
@@ -120,6 +129,10 @@ export function FlightRig({
   onRingPassed,
   onCrash,
   onSixSeven,
+  flySRef,
+  usedKeyboardRef,
+  crashEndsRun = false,
+  onGameOver,
 }: FlightRigProps) {
   const accRef = useRef(0)
   // performance.now() ms until which collisions are ignored (post-respawn grace).
@@ -163,7 +176,7 @@ export function FlightRig({
     // A camera (re)calibrate gate is open: freeze the sim (the duck hovers) until
     // it closes. Only relevant in camera mode; keyboard mode never opens the gate.
     const calibrating = cameraControl && useCalibrationStore.getState().gateOpen
-    const frozen = enableFinish && finishedRef.current
+    const frozen = finishedRef.current
     const running = runningRef.current && !frozen && !calibrating
 
     // On each run (re)start, reset the 6-7 detector and stamp the start time so the
@@ -176,7 +189,9 @@ export function FlightRig({
     wasRunningRef.current = running
 
     if (running) {
-      accRef.current += Math.min(delta, MAX_FRAME_DT)
+      const frameDt = Math.min(delta, MAX_FRAME_DT)
+      accRef.current += frameDt
+      if (flySRef) flySRef.current += frameDt
 
       // Decay the binary flap PULSE (the short-lived flap-field envelope a detected
       // gesture flap raises below) so a camera flap drives the wing animation,
@@ -249,6 +264,7 @@ export function FlightRig({
       // every gesture term is 0, so this is byte-identical to keyboard-only.
       const base = actionsRef.current
       const k = keyRef.current
+      if (usedKeyboardRef && (k.flap || k.lean || k.dive)) usedKeyboardRef.current = true
       const gFlap = cameraControl ? gestureFlapRef.current + flapPulseRef.current : 0
       const gLean = cameraControl ? gestureLeanRef.current : 0
       const gDive = cameraControl ? gestureDiveRef.current : 0
@@ -340,6 +356,12 @@ export function FlightRig({
           }
 
           if (crashed) {
+            if (crashEndsRun) {
+              finishedRef.current = true
+              onGameOver?.()
+              crashedThisFrame = true
+              break
+            }
             const cpZ = lastCheckpointZ(s2.position[2], mapRef.current.checkpoints)
             // Fresh state zeroes velocity + the eased _lean/_flap/_dive slots; keep
             // only the checkpoint Z (respawn on the centerline at the start altitude).
@@ -359,7 +381,7 @@ export function FlightRig({
       if (ringsChanged) onRingsChanged?.()
       if (crashedThisFrame) {
         accRef.current = 0 // drop leftover sub-step time so respawn doesn't jump
-        onCrash?.()
+        if (!crashEndsRun) onCrash?.()
       }
 
       if (enableFinish) {
