@@ -1,7 +1,8 @@
 // The shared 3D scene for the real game. Owns the <Canvas> and everything inside
 // it: sky, lights, the generated map, the local player's flight rig + chase
 // camera, and a `children` slot for mode-specific scene content (multiplayer
-// renders its remote ducks there). Both SinglePlayerGame and MultiplayerGame
+// renders its remote ducks there). All modes use the shared `FlightGame` shell
+// (SinglePlayerGame, MultiplayerGame, InfiniteRunGame)
 // render this identically; only the injected rig props + children differ.
 
 import { Suspense, type ReactNode } from 'react'

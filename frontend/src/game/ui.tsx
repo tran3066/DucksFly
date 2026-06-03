@@ -80,10 +80,11 @@ export function Overlay({
       style={{
         position: 'absolute',
         inset: 0,
+        zIndex: 50,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '80px 40px 40px',
+        padding: '24px 40px 40px',
         background: `linear-gradient(180deg, ${COLORS.skyWash} 0%, #d6ecf9 60%, rgba(159,182,201,${0.4 + tint}) 100%)`,
         color: COLORS.slate,
         fontFamily: FONT_BODY,
