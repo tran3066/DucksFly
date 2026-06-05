@@ -32,9 +32,7 @@ export function useFlightLevaTuning(
     confidence: { value: 1, min: 0, max: 1, step: 0.01 },
     quack: false,
     egg67: false,
-    // eslint-disable-next-line react-hooks/refs
     flapImpulse: button(opts.fireImpulse),
-    // eslint-disable-next-line react-hooks/refs
     reset: button(opts.onReset),
   })
 

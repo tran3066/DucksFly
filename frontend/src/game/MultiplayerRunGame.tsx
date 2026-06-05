@@ -1,4 +1,4 @@
-// Multiplayer: shared `FlightGame` + `localFlightSetup` defaults + backend sync.
+// Multiplayer: shared `MainGameRunner` + `localFlightSetup` defaults + backend sync.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Euler, Quaternion } from 'three'
@@ -6,19 +6,22 @@ import type { DuckState } from '../physics'
 import { buildMap, type MapDef } from '../map'
 import type { DuckVariant } from '../avatar/loadDuck'
 import { createFlightState } from './flight'
-import { FlightGame, buildFlightRig } from './FlightGame'
+import { MainGameRunner } from './MainGameRunner'
 import { applyLocalFlightDefaults, computeStartCam, STANDARD_CAM_CFG } from './localFlightSetup'
 import { useApplyLocalFlightDefaults } from './useApplyLocalFlightDefaults'
 import { useFlightSession } from './useFlightSession'
 import { startMusic, stopMusic, playFinish } from './sfx'
 import { Minimap } from './Minimap'
 import { RemoteDucks } from './RemoteDuck'
-import { ControlModeToggle, type ControlMode } from './ModeChooser'
+import { type ControlMode } from './ModeChooser'
+import { FlightDebugHud, GameChrome, useDebugToggle } from './flightUi'
 import { useCalibrationStore } from '../input/calibration'
 import { raceConnection } from '../net/connection'
 import { useRace } from '../net/useRace'
 import { POSITION_SEND_HZ } from '@shared/constants'
 import { RaceScreens } from './screens/RaceScreens'
+import { rankPlayers } from './screens/parts'
+import { recordSession } from '../data/flightStore'
 
 const SPAWN_SPACING = 5
 
@@ -37,7 +40,7 @@ function poseToQuat(yaw: number, pitch: number, roll: number): [number, number, 
   return [_quat.x, _quat.y, _quat.z, _quat.w]
 }
 
-export function MultiplayerGame({
+export function MultiplayerRunGame({
   onExit,
   controlMode,
   onSetControlMode,
@@ -48,6 +51,7 @@ export function MultiplayerGame({
 }) {
   const race = useRace()
   const cameraControl = controlMode === 'camera'
+  const debug = useDebugToggle()
 
   const racing = race.phase === 'racing'
   useEffect(() => {
@@ -57,7 +61,7 @@ export function MultiplayerGame({
 
   const session = useFlightSession({ makeInitialState: () => spawnState(0) })
   useApplyLocalFlightDefaults(session)
-  const { stateRef, passedRingsRef, reset } = session
+  const { stateRef, mergedActionsRef, clipRef, boostRef, passedRingsRef, reset } = session
 
   const finishedStreamRef = useRef(false)
   const [localFinished, setLocalFinished] = useState(false)
@@ -87,6 +91,15 @@ export function MultiplayerGame({
   mapRef.current = map
   const ringCount = map.rings.length
 
+  // Clear the local-finished flag when a race (re)starts. Done via the
+  // adjust-on-change render pattern so the direct setState stays out of the effect
+  // below (react-hooks/set-state-in-effect); the ref/baseline re-init stays in the
+  // effect since those are not React state.
+  const [prevRacing, setPrevRacing] = useState(racing)
+  if (prevRacing !== racing) {
+    setPrevRacing(racing)
+    if (racing) setLocalFinished(false)
+  }
   useEffect(() => {
     if (race.phase !== 'racing') return
     const index = Math.max(0, playersRef.current.findIndex((p) => p.id === sessionIdRef.current))
@@ -94,7 +107,6 @@ export function MultiplayerGame({
     applyLocalFlightDefaults(session)
     finishedStreamRef.current = false
     crashCountRef.current = 0
-    setLocalFinished(false)
   }, [race.phase, reset, session])
 
   useEffect(() => {
@@ -124,23 +136,49 @@ export function MultiplayerGame({
     playFinish()
   }).current
 
-  const rig = buildFlightRig(session, {
-    mapRef,
-    cameraControl,
-    runningRef,
-    enableFinish: true,
-    variant,
-    onFinish,
-    onCrash,
-  })
+  // Record exactly one session when the race ends. `race.phase` flips to
+  // 'finished' once; guard against the ~20 Hz snapshot re-renders. DNF still
+  // records (games++ + aggregates) with won/finished false. Distance/rings/flyS
+  // come from the LOCAL sim (PlayerView has no distance).
+  const recordedRef = useRef(false)
+  useEffect(() => {
+    if (race.phase !== 'finished') {
+      recordedRef.current = false
+      return
+    }
+    if (recordedRef.current) return
+    recordedRef.current = true
+    const finishedSelf = self?.finished ?? false
+    const won =
+      finishedSelf &&
+      rankPlayers(playersRef.current).find((p) => p.finished)?.id === sessionIdRef.current
+    recordSession({
+      mode: 'multiplayer',
+      control: session.usedKeyboardRef.current ? 'kb' : 'cam',
+      flyS: session.flySRef.current,
+      distance: stateRef.current.distance,
+      rings: passedRingsRef.current.size,
+      won,
+      finished: finishedSelf,
+    })
+  }, [race.phase, self, session, stateRef, passedRingsRef])
 
   return (
-    <FlightGame
+    <MainGameRunner
       map={map}
       startCam={computeStartCam(stateRef.current.position)}
       camCfg={STANDARD_CAM_CFG}
       session={session}
-      rig={rig}
+      cameraControl={cameraControl}
+      rig={{
+        mapRef,
+        cameraControl,
+        runningRef,
+        enableFinish: true,
+        variant,
+        onFinish,
+        onCrash,
+      }}
       sceneChildren={<RemoteDucks players={race.players} sessionId={race.sessionId} />}
       overlay={
         <>
@@ -162,15 +200,24 @@ export function MultiplayerGame({
           />
         </>
       }
-      cameraControl={cameraControl}
       chrome={
-        !racing ? (
-          <ControlModeToggle
-            mode={cameraControl ? 'camera' : 'keyboard'}
-            onChange={onSetControlMode}
-            style={{ top: 12, left: 12 }}
+        <>
+          {debug && (
+            <FlightDebugHud
+              stateRef={stateRef}
+              actionsRef={mergedActionsRef}
+              clipRef={clipRef}
+              boostRef={boostRef}
+              passedRingsRef={passedRingsRef}
+            />
+          )}
+          <GameChrome
+            cameraControl={cameraControl}
+            onSetControlMode={onSetControlMode}
+            showControlToggle={!racing}
+            controlToggleStyle={{ top: 12, left: 12 }}
           />
-        ) : null
+        </>
       }
     />
   )

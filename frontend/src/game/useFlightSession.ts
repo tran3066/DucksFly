@@ -1,6 +1,6 @@
 // Shared local-player session wiring for the flight modes.
 //
-// `SinglePlayerGame`, `MultiplayerGame`, and `InfiniteRunGame` drive their duck through the
+// `SingleplayerRaceRunGame`, `MultiplayerRunGame`, and `InfiniteRunGame` drive their duck through the
 // same `FlightScene` + `FlightRig`, and both used to hand-roll the SAME ~15 refs,
 // the ring-sync state, and the impulse/keyboard plumbing. This hook owns that
 // duplicated bundle in one place so new modes plug into a single seam.

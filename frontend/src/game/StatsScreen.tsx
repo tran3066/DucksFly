@@ -14,6 +14,7 @@ import {
   getTotalDistance,
   getTotalRings,
   getModeFlyS,
+  getPlayerName,
   type Control,
 } from '../data/flightStore'
 import {
@@ -58,7 +59,10 @@ export function StatsScreen({ onClose }: { onClose: () => void }) {
       <style>{UI_KEYFRAMES}</style>
       <Panel width={620} style={{ maxHeight: '82vh', overflowY: 'auto' }}>
         <div style={headerRow}>
-          <h1 style={title}>📊 Lifetime Stats</h1>
+          <div>
+            <h1 style={title}>📊 Lifetime Stats</h1>
+            <div style={subtitle}>{getPlayerName()}</div>
+          </div>
           <Button variant="ghost" onClick={onClose} style={{ padding: '8px 16px' }}>
             ✕ Close
           </Button>
@@ -273,6 +277,14 @@ const title: CSSProperties = {
   fontWeight: 700,
   fontSize: '1.8rem',
   color: COLORS.slate,
+}
+
+const subtitle: CSSProperties = {
+  marginTop: 2,
+  fontFamily: FONT_DISPLAY,
+  fontWeight: 600,
+  fontSize: '1rem',
+  color: COLORS.orangeDeep,
 }
 
 const sectionLabel: CSSProperties = {

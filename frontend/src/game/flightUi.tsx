@@ -1,10 +1,20 @@
 // HUD chrome shared by race, infinite, and multiplayer local flight.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { DuckActions, DuckState } from '../physics'
 import { makeIdleActions } from '../shared/types/duckActions'
 import { createFlightState } from './flight'
-import { COLORS, FONT_MONO as MONO, KeyCap, cutPath } from './ui'
+import { ControlModeToggle, type ControlMode } from './ModeChooser'
+import {
+  Button,
+  COLORS,
+  FONT_DISPLAY,
+  FONT_MONO as MONO,
+  KeyCap,
+  Overlay,
+  Panel,
+  cutPath,
+} from './ui'
 
 export type ControlsHintVariant = 'race' | 'infinite'
 
@@ -85,23 +95,25 @@ export const hudChipStyle: React.CSSProperties = {
   clipPath: cutPath(8),
 }
 
-export function DebugToggle({ debug, onToggle }: { debug: boolean; onToggle: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      style={{
-        ...hudChipStyle,
-        position: 'absolute',
-        top: 20,
-        right: 20,
-        color: debug ? COLORS.orange : COLORS.hudText,
-        borderColor: debug ? COLORS.orange : COLORS.hudLine,
-      }}
-    >
-      debug: {debug ? 'ON' : 'off'}
-    </button>
-  )
+/**
+ * Debug visibility for every mode. Hidden by default; toggled with the backtick
+ * (`~`) key. Replaces the old always-visible "debug" chip so production play is
+ * clean and the debug HUD / Leva panel only appear on demand.
+ */
+export function useDebugToggle(): boolean {
+  const [debug, setDebug] = useState(false)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== 'Backquote') return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      e.preventDefault()
+      setDebug((d) => !d)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+  return debug
 }
 
 export function ExitButton({ onExit, style }: { onExit: () => void; style?: React.CSSProperties }) {
@@ -264,5 +276,190 @@ export function BigStat({
         )}
       </span>
     </div>
+  )
+}
+
+/** One readout in a `LiveStatHud`: a label + a function that reads its live value. */
+export interface LiveStat {
+  label: string
+  read: () => string
+  suffix?: string
+  accent?: string
+}
+
+/**
+ * Top-center live HUD shared by race + infinite. Polls each stat's `read()` on an
+ * interval; when `frozen` flips true (finish / game-over) it captures the values
+ * once and holds them so the final readout stays put.
+ */
+export function LiveStatHud({
+  stats,
+  frozen = false,
+  intervalMs = 100,
+}: {
+  stats: LiveStat[]
+  frozen?: boolean
+  intervalMs?: number
+}) {
+  const statsRef = useRef(stats)
+  statsRef.current = stats
+  const [values, setValues] = useState<string[]>(() => stats.map((s) => s.read()))
+  const frozenValuesRef = useRef<string[] | null>(null)
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (frozen) {
+        if (frozenValuesRef.current == null) {
+          frozenValuesRef.current = statsRef.current.map((s) => s.read())
+        }
+        setValues(frozenValuesRef.current)
+      } else {
+        frozenValuesRef.current = null
+        setValues(statsRef.current.map((s) => s.read()))
+      }
+    }, intervalMs)
+    return () => clearInterval(id)
+  }, [frozen, intervalMs])
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 14,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        display: 'flex',
+        gap: 12,
+      }}
+    >
+      {stats.map((s, i) => (
+        <BigStat key={s.label} label={s.label} value={values[i] ?? ''} suffix={s.suffix} accent={s.accent} />
+      ))}
+    </div>
+  )
+}
+
+/** One stat pill in a `ResultOverlay`. */
+export interface ResultStat {
+  label: string
+  value: string
+  color: string
+}
+
+/**
+ * Shared end-of-run overlay for solo modes (race finish + infinite game-over).
+ * Renders a title, optional PB badge + subtitle, a row of stat pills, and up to
+ * two buttons. Multiplayer keeps its own results screen (different data shape).
+ */
+export function ResultOverlay({
+  title,
+  badge,
+  subtitle,
+  stats,
+  primary,
+  secondary,
+  width = 460,
+}: {
+  title: ReactNode
+  badge?: ReactNode
+  subtitle?: ReactNode
+  stats: ResultStat[]
+  primary: { label: string; onClick: () => void }
+  secondary?: { label: string; onClick: () => void }
+  width?: number
+}) {
+  return (
+    <Overlay dim={0.5}>
+      <Panel width={width} style={{ textAlign: 'center', padding: '34px 44px' }}>
+        <div
+          style={{
+            fontFamily: FONT_DISPLAY,
+            fontSize: '2.1rem',
+            fontWeight: 700,
+            color: COLORS.slate,
+            marginBottom: 6,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: 10,
+          }}
+        >
+          {title}
+        </div>
+        {badge && (
+          <p
+            style={{
+              color: COLORS.gold,
+              fontFamily: FONT_DISPLAY,
+              fontWeight: 700,
+              fontSize: '1.15rem',
+              margin: '0 0 8px',
+            }}
+          >
+            {badge}
+          </p>
+        )}
+        {subtitle && (
+          <p style={{ color: COLORS.slateDim, margin: '0 0 26px', fontWeight: 500 }}>{subtitle}</p>
+        )}
+        <div style={{ display: 'flex', gap: 36, justifyContent: 'center', margin: '0 0 28px' }}>
+          {stats.map((s) => (
+            <div
+              key={s.label}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}
+            >
+              <span style={{ fontFamily: MONO, fontSize: '2.1rem', fontWeight: 700, color: s.color, lineHeight: 1 }}>
+                {s.value}
+              </span>
+              <span style={{ color: COLORS.slateDim, fontFamily: MONO, fontSize: '0.7rem', letterSpacing: 1.5 }}>
+                {s.label}
+              </span>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 13, justifyContent: 'center' }}>
+          <Button variant="primary" onClick={primary.onClick}>
+            {primary.label}
+          </Button>
+          {secondary && (
+            <Button variant="ghost" onClick={secondary.onClick}>
+              {secondary.label}
+            </Button>
+          )}
+        </div>
+      </Panel>
+    </Overlay>
+  )
+}
+
+/**
+ * Standard in-flight chrome: control-mode toggle + exit button, positioned
+ * consistently across modes. The debug HUD / Leva are mounted separately by each
+ * mode (gated by `useDebugToggle`), so this only covers the always-allowed chrome.
+ */
+export function GameChrome({
+  cameraControl,
+  onSetControlMode,
+  onExit,
+  showControlToggle = true,
+  controlToggleStyle,
+}: {
+  cameraControl: boolean
+  onSetControlMode: (mode: ControlMode) => void
+  onExit?: () => void
+  showControlToggle?: boolean
+  controlToggleStyle?: React.CSSProperties
+}) {
+  return (
+    <>
+      {showControlToggle && (
+        <ControlModeToggle
+          mode={cameraControl ? 'camera' : 'keyboard'}
+          onChange={onSetControlMode}
+          style={controlToggleStyle ?? { top: 20, right: 130 }}
+        />
+      )}
+      {onExit && <ExitButton onExit={onExit} style={{ right: 20 }} />}
+    </>
   )
 }

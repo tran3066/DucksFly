@@ -5,9 +5,9 @@
 import { useState } from 'react'
 import { StartMenu, type GameMode } from './StartMenu'
 import { RaceSetup } from './RaceSetup'
-import { SinglePlayerGame } from './SinglePlayerGame'
+import { SingleplayerRaceRunGame } from './SingleplayerRaceRunGame'
 import { InfiniteRunGame } from './InfiniteRunGame'
-import { MultiplayerGame } from './MultiplayerGame'
+import { MultiplayerRunGame } from './MultiplayerRunGame'
 import { ModeChooser, type ControlMode } from './ModeChooser'
 import { WebcamPanel } from '../debug/WebcamPanel'
 import { raceConnection } from '../net/connection'
@@ -32,7 +32,7 @@ export function Game() {
 
   const screen =
     mode === 'race' ? (
-      <SinglePlayerGame
+      <SingleplayerRaceRunGame
         targetDist={raceTargetDist}
         onExit={backToMenu}
         controlMode={controlMode}
@@ -45,7 +45,7 @@ export function Game() {
         onSetControlMode={setControlMode}
       />
     ) : mode === 'multi' ? (
-      <MultiplayerGame
+      <MultiplayerRunGame
         onExit={() => {
           raceConnection.leave()
           backToMenu()

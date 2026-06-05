@@ -11,10 +11,12 @@ import {
   FONT_DISPLAY,
   KeyCap,
   SHADOW,
+  TextInput,
   UI_KEYFRAMES,
   cutPath,
 } from './ui'
 import { StatsScreen } from './StatsScreen'
+import { getPlayerName, setPlayerName } from '../data/flightStore'
 
 export type GameMode = 'race-setup' | 'race' | 'infinite' | 'multi'
 
@@ -29,6 +31,7 @@ export function StartMenu({ onPick }: { onPick: (mode: GameMode) => void }) {
       <div style={root}>
         <style>{UI_KEYFRAMES}</style>
         <SkyBackdrop />
+        <NameBadge />
         <div style={topBar}>
           <Button variant="ghost" onClick={() => setShowStats(true)}>
             📊 Lifetime stats
@@ -91,6 +94,7 @@ export function StartMenu({ onPick }: { onPick: (mode: GameMode) => void }) {
     <div style={root}>
       <style>{UI_KEYFRAMES}</style>
       <SkyBackdrop />
+      <NameBadge />
 
       <div style={topBar}>
         <Button variant="ghost" onClick={() => setShowStats(true)}>
@@ -209,6 +213,65 @@ function ModeCard({
   )
 }
 
+/** Top-left "Hi, {name}" greeting with an inline editor. The name persists via
+ *  the player profile (the same identity the stats + multiplayer lobby read). */
+function NameBadge() {
+  const [name, setName] = useState(() => getPlayerName())
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(name)
+
+  const commit = () => {
+    const next = draft.trim()
+    if (next) {
+      setPlayerName(next)
+      setName(next)
+    } else {
+      setDraft(name)
+    }
+    setEditing(false)
+  }
+
+  return (
+    <div style={nameBadge}>
+      {editing ? (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <TextInput
+            value={draft}
+            onChange={setDraft}
+            maxLength={20}
+            placeholder="Your name"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commit()
+              if (e.key === 'Escape') {
+                setDraft(name)
+                setEditing(false)
+              }
+            }}
+            style={{ padding: '7px 11px', fontSize: '0.9rem' }}
+          />
+          <Button variant="primary" onClick={commit} style={{ padding: '7px 14px' }}>
+            Save
+          </Button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => {
+            setDraft(name)
+            setEditing(true)
+          }}
+          style={nameButton}
+          title="Change your name"
+        >
+          <span style={{ color: '#fff', opacity: 0.85 }}>Hi,</span>
+          <span style={{ color: '#fff', fontWeight: 700 }}>{name}</span>
+          <span style={{ opacity: 0.7, fontSize: '0.85rem' }}>✏️</span>
+        </button>
+      )}
+    </div>
+  )
+}
+
 /** Static low-poly sky backdrop behind the menu (gradient + cloud silhouettes). */
 function SkyBackdrop() {
   return (
@@ -242,6 +305,28 @@ const topBar: React.CSSProperties = {
   top: 18,
   right: 18,
   zIndex: 2,
+}
+
+const nameBadge: React.CSSProperties = {
+  position: 'absolute',
+  top: 18,
+  left: 18,
+  zIndex: 2,
+}
+
+const nameButton: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 7,
+  padding: '9px 15px',
+  background: 'rgba(20,40,60,0.32)',
+  border: '1px solid rgba(255,255,255,0.28)',
+  borderRadius: 999,
+  cursor: 'pointer',
+  fontFamily: FONT_DISPLAY,
+  fontSize: '1rem',
+  textShadow: '0 1px 4px rgba(20,40,60,0.4)',
+  backdropFilter: 'blur(4px)',
 }
 
 const content: React.CSSProperties = {

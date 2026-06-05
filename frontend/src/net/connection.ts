@@ -154,7 +154,7 @@ class RaceConnection {
       code: state.code ?? "",
       mapSeed: state.mapSeed,
       // The server no longer holds ring geometry; clients derive the ring count from the
-      // seed-built course locally (see MultiplayerGame). Kept on the snapshot at 0 only for
+      // seed-built course locally (see MultiplayerRunGame). Kept on the snapshot at 0 only for
       // the legacy harnesses that still read it.
       ringCount: 0,
       countdownEndsAt: state.countdownEndsAt,
